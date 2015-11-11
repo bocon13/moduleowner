@@ -76,13 +76,16 @@ public class MergeUserValidator implements MergeValidationListener {
 
         IdentifiedUser submitter =
                 identifiedUserFactory.create(psa.getAccountId());
-        log.info("submitter: {} ({})", submitter.getUserName(), submitter.getName());
 
         if(!isPatchApproved(commit, submitter, repo,
                             destProject.getProject().getNameKey(),
                             configFactory, groupFactory)) {
             throw new MergeValidationException(DENY_STATUS);
         }
+        log.info("user {} submitted commit {}/{}",
+                 submitter.getUserName(),
+                 destProject.getProject().getNameKey(),
+                 commit.getId().getName());
     }
 }
 

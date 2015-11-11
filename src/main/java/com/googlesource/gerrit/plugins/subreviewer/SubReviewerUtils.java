@@ -136,10 +136,10 @@ public class SubReviewerUtils {
             if (groupDesc != null) {
                 addAll(pathPatterns,
                        config.getStringList(CONFIG_GROUP, groupDesc.getName(), CONFIG_PATH));
-                log.info("Group {}, Paths {}", groupDesc.getName(),
-                         config.getStringList(CONFIG_GROUP, groupDesc.getName(), CONFIG_PATH));
+                log.debug("Group {}, Paths {}", groupDesc.getName(),
+                          config.getStringList(CONFIG_GROUP, groupDesc.getName(), CONFIG_PATH));
             } else {
-                log.info("Unable to find group from UUID: {}", uuid);
+                log.warn("Unable to find group from UUID: {}", uuid);
             }
         }
 
@@ -154,8 +154,7 @@ public class SubReviewerUtils {
      * @return true if every file matches, false otherwise
      */
     public static boolean isPatchApproved(List<String> files, List<String> patterns) {
-        //TODO lower log levels in this function
-        log.info("files: {}, patterns: {}", files, patterns);
+        log.debug("files: {}, patterns: {}", files, patterns);
         for (String file : files) {
             boolean match = false;
             for (String pattern : patterns) {
@@ -165,11 +164,11 @@ public class SubReviewerUtils {
                 }
             }
             if (!match) {
-                log.info("file {} does not match any regex: {}", file, patterns);
+                log.debug("file {} does not match any regex: {}", file, patterns);
                 return false;
             }
         }
-        log.info("patch approved");
+        log.debug("patch approved");
         return true;
     }
 
@@ -196,6 +195,18 @@ public class SubReviewerUtils {
             return false;
         }
         List<String> files = getFilesInCommit(repository, commit);
-        return isPatchApproved(files, patterns);
+        boolean result = isPatchApproved(files, patterns);
+        // TODO remove logs eventually
+        if (result) {
+            log.info("user {} is module owner for commit {}/{} with patterns {}",
+                     user.getUserName(), projectName.get(),
+                     commit.getId().getName(), patterns);
+        } else {
+            log.info("user {} is not module owner for commit {}/{} with patterns {}",
+                     user.getUserName(), projectName.get(),
+                     commit.getId().getName(), patterns);
+
+        }
+        return result;
     }
 }
