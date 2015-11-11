@@ -64,7 +64,12 @@ public class FileOwner implements RestReadView<RevisionResource> {
               if the plugin is disabled, then module owners will be able to
               submit any change.
         */
-        if(!rev.getControl().canSubmit()) {
+        if (!rev.getControl().canSubmit()) {
+            return Response.ok(Status.NONE);
+        }
+
+        // Don't displace status for DRAFT, MERGED, SUBMITTED, or ABANDONED changes
+        if (rev.getChange().getStatus() != Change.Status.NEW) {
             return Response.ok(Status.NONE);
         }
 
