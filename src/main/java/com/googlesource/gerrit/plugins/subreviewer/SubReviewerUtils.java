@@ -1,8 +1,13 @@
 package com.googlesource.gerrit.plugins.subreviewer;
 
 import autovalue.shaded.com.google.common.common.collect.Lists;
+import com.google.gerrit.common.data.GroupDescription;
+import com.google.gerrit.reviewdb.client.AccountGroup;
+import com.google.gerrit.reviewdb.client.Project;
 import com.google.gerrit.server.CurrentUser;
+import com.google.gerrit.server.account.GroupInfoCacheFactory;
 import com.google.gerrit.server.config.PluginConfigFactory;
+import com.google.gerrit.server.project.NoSuchProjectException;
 import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.diff.DiffEntry;
 import org.eclipse.jgit.lib.Config;
@@ -15,9 +20,10 @@ import org.eclipse.jgit.treewalk.TreeWalk;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.Arrays;
 import java.util.List;
 import java.util.regex.Pattern;
+
+import static java.util.Collections.addAll;
 
 /**
  * Collection of utilities.
@@ -26,6 +32,7 @@ public class SubReviewerUtils {
 
     private static final String PLUGIN_NAME = "subreviewer";
     private static final String CONFIG_USER = "user";
+    private static final String CONFIG_GROUP = "group";
     private static final String CONFIG_PATH = "path";
 
     private static final Logger log = LoggerFactory.getLogger(SubReviewerUtils.class);
@@ -105,17 +112,38 @@ public class SubReviewerUtils {
      * @return list of file patterns
      */
     public static List<String> getFilesForUser(CurrentUser user,
-                                               PluginConfigFactory configFactory) {
+                                               Project.NameKey projectName,
+                                               PluginConfigFactory configFactory,
+                                               GroupInfoCacheFactory groupFactory) {
         // TODO verify "dynamic-submit" capability, bail early if not present
 //        if (!submitter.getCapabilities().canAdministrateServer()) {
 //            throw new MergeValidationException(CommitMergeStatus.PATH_CONFLICT);
 //        }
 
-        // FIXME move to project-based config (use destProject)
+        // TODO do we want to fail back to root config? (we currently do)
         Config config = configFactory.getGlobalPluginConfig(PLUGIN_NAME);
-        return Arrays.asList(
+        try {
+            config = configFactory.getProjectPluginConfigWithInheritance(projectName, PLUGIN_NAME);
+        } catch (NoSuchProjectException e) {
+            log.warn("No such project {}", projectName, e);
+        }
+
+        List<String> pathPatterns = Lists.newArrayList(
                 config.getStringList(CONFIG_USER, user.getUserName(), CONFIG_PATH));
 
+        for(AccountGroup.UUID uuid : user.getEffectiveGroups().getKnownGroups()) {
+            GroupDescription.Basic groupDesc = groupFactory.get(uuid);
+            if (groupDesc != null) {
+                addAll(pathPatterns,
+                       config.getStringList(CONFIG_GROUP, groupDesc.getName(), CONFIG_PATH));
+                log.info("Group {}, Paths {}", groupDesc.getName(),
+                         config.getStringList(CONFIG_GROUP, groupDesc.getName(), CONFIG_PATH));
+            } else {
+                log.info("Unable to find group from UUID: {}", uuid);
+            }
+        }
+
+        return pathPatterns;
     }
 
     /**
@@ -152,13 +180,18 @@ public class SubReviewerUtils {
      * @param commit
      * @param user
      * @param repository
+     * @param projectName
      * @param configFactory
+     * @param groupFactory
      * @return true if the user can submit, false otherwise
      */
     public static boolean isPatchApproved(RevCommit commit, CurrentUser user,
                                           Repository repository,
-                                          PluginConfigFactory configFactory) {
-        List<String> patterns = getFilesForUser(user, configFactory);
+                                          Project.NameKey projectName,
+                                          PluginConfigFactory configFactory,
+                                          GroupInfoCacheFactory groupFactory) {
+        List<String> patterns = getFilesForUser(user, projectName,
+                                                configFactory, groupFactory);
         if (patterns.isEmpty()) {
             return false;
         }

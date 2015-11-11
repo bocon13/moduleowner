@@ -5,6 +5,7 @@ import com.google.gerrit.extensions.restapi.RestReadView;
 import com.google.gerrit.reviewdb.client.Change;
 import com.google.gerrit.server.CurrentUser;
 import com.google.gerrit.server.IdentifiedUser;
+import com.google.gerrit.server.account.GroupInfoCacheFactory;
 import com.google.gerrit.server.change.RevisionResource;
 import com.google.gerrit.server.config.PluginConfigFactory;
 import com.google.gerrit.server.git.GitRepositoryManager;
@@ -27,7 +28,6 @@ import static com.googlesource.gerrit.plugins.subreviewer.SubReviewerUtils.isPat
  * REST endpoint for client script to determine whether the current user is a
  * module owner.
  */
-//FIXME requries dynamic submit
 public class FileOwner implements RestReadView<RevisionResource> {
     private static final Logger log = LoggerFactory.getLogger(FileOwner.class);
 
@@ -35,16 +35,19 @@ public class FileOwner implements RestReadView<RevisionResource> {
     private final Provider<CurrentUser> currentUserProvider;
     private final PatchListCache patchListCache;
     private final PluginConfigFactory configFactory;
+    private final GroupInfoCacheFactory groupFactory;
 
     @Inject
     FileOwner(Provider<CurrentUser> currentUserProvider,
               GitRepositoryManager gitManager,
               PatchListCache patchListCache,
-              PluginConfigFactory configFactory) {
+              PluginConfigFactory configFactory,
+              GroupInfoCacheFactory groupFactory) {
         this.currentUserProvider = currentUserProvider;
         this.gitManager = gitManager;
         this.patchListCache = patchListCache;
         this.configFactory = configFactory;
+        this.groupFactory = groupFactory;
     }
 
     @Override
@@ -56,15 +59,22 @@ public class FileOwner implements RestReadView<RevisionResource> {
             return Response.ok(Status.NONE);
         }
 
-        // TODO verify "dynamic-submit" capability, bail early if not present
-        //      this can also be done in utils
+        /*
+           FIXME consider using "dynamic-submit" capability instead because
+              if the plugin is disabled, then module owners will be able to
+              submit any change.
+        */
+        if(!rev.getControl().canSubmit()) {
+            return Response.ok(Status.NONE);
+        }
 
         Change change = rev.getChange();
         try (Repository repo = gitManager.openRepository(change.getProject())) {
             RevWalk rw = new RevWalk(repo.newObjectReader());
             PatchList curList = patchListCache.get(rev.getChange(), rev.getPatchSet());
             if (isPatchApproved(rw.parseCommit(curList.getNewId()),
-                                submitter, repo, configFactory)) {
+                                submitter, repo, change.getProject(),
+                                configFactory, groupFactory)) {
                 return Response.ok(Status.APPROVED);
             }
             return Response.ok(Status.DENIED);
@@ -85,7 +95,3 @@ public class FileOwner implements RestReadView<RevisionResource> {
         NONE
     }
 }
-
-
-
-

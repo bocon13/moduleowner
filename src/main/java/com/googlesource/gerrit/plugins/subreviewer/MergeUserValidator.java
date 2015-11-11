@@ -6,6 +6,7 @@ import com.google.gerrit.reviewdb.client.PatchSetApproval;
 import com.google.gerrit.reviewdb.server.ReviewDb;
 import com.google.gerrit.server.ApprovalsUtil;
 import com.google.gerrit.server.IdentifiedUser;
+import com.google.gerrit.server.account.GroupInfoCacheFactory;
 import com.google.gerrit.server.config.PluginConfigFactory;
 import com.google.gerrit.server.git.CodeReviewCommit;
 import com.google.gerrit.server.git.CommitMergeStatus;
@@ -39,6 +40,7 @@ public class MergeUserValidator implements MergeValidationListener {
     private final Provider<ReviewDb> reviewDb;
     private final ApprovalsUtil approvalsUtil;
     private final PluginConfigFactory configFactory;
+    private final GroupInfoCacheFactory groupFactory;
 
 
     // Because there is 'No user on merge thread' we need to get the
@@ -49,11 +51,13 @@ public class MergeUserValidator implements MergeValidationListener {
     MergeUserValidator(IdentifiedUser.GenericFactory identifiedUserFactory,
                        Provider<ReviewDb> reviewDb,
                        ApprovalsUtil approvalsUtil,
-                       PluginConfigFactory configFactory) {
+                       PluginConfigFactory configFactory,
+                       GroupInfoCacheFactory groupFactory) {
         this.identifiedUserFactory = identifiedUserFactory;
         this.reviewDb = reviewDb;
         this.approvalsUtil = approvalsUtil;
         this.configFactory = configFactory;
+        this.groupFactory = groupFactory;
     }
 
     /**
@@ -74,7 +78,9 @@ public class MergeUserValidator implements MergeValidationListener {
                 identifiedUserFactory.create(psa.getAccountId());
         log.info("submitter: {} ({})", submitter.getUserName(), submitter.getName());
 
-        if(!isPatchApproved(commit, submitter, repo, configFactory)) {
+        if(!isPatchApproved(commit, submitter, repo,
+                            destProject.getProject().getNameKey(),
+                            configFactory, groupFactory)) {
             throw new MergeValidationException(DENY_STATUS);
         }
     }
