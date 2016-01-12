@@ -6,8 +6,6 @@ import com.google.gerrit.reviewdb.client.PatchSetApproval;
 import com.google.gerrit.reviewdb.server.ReviewDb;
 import com.google.gerrit.server.ApprovalsUtil;
 import com.google.gerrit.server.IdentifiedUser;
-import com.google.gerrit.server.account.GroupInfoCacheFactory;
-import com.google.gerrit.server.config.PluginConfigFactory;
 import com.google.gerrit.server.git.CodeReviewCommit;
 import com.google.gerrit.server.git.CommitMergeStatus;
 import com.google.gerrit.server.git.validators.MergeValidationException;
@@ -19,8 +17,6 @@ import com.google.inject.Singleton;
 import org.eclipse.jgit.lib.Repository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import static com.googlesource.gerrit.plugins.subreviewer.SubReviewerUtils.isPatchApproved;
 
 /**
  * Merge validator that rejects merges (submits) if the user does not have the
@@ -39,9 +35,7 @@ public class MergeUserValidator implements MergeValidationListener {
     private final IdentifiedUser.GenericFactory identifiedUserFactory;
     private final Provider<ReviewDb> reviewDb;
     private final ApprovalsUtil approvalsUtil;
-    private final PluginConfigFactory configFactory;
-    private final GroupInfoCacheFactory groupFactory;
-
+    private final ModuleOwnerConfigCache configFactory;
 
     // Because there is 'No user on merge thread' we need to get the
     // identified user from IdentifiedUser.GenericFactory, this is
@@ -51,13 +45,11 @@ public class MergeUserValidator implements MergeValidationListener {
     MergeUserValidator(IdentifiedUser.GenericFactory identifiedUserFactory,
                        Provider<ReviewDb> reviewDb,
                        ApprovalsUtil approvalsUtil,
-                       PluginConfigFactory configFactory,
-                       GroupInfoCacheFactory groupFactory) {
+                       ModuleOwnerConfigCache configFactory) {
         this.identifiedUserFactory = identifiedUserFactory;
         this.reviewDb = reviewDb;
         this.approvalsUtil = approvalsUtil;
         this.configFactory = configFactory;
-        this.groupFactory = groupFactory;
     }
 
     /**
@@ -77,9 +69,13 @@ public class MergeUserValidator implements MergeValidationListener {
         IdentifiedUser submitter =
                 identifiedUserFactory.create(psa.getAccountId());
 
-        if(!isPatchApproved(commit, submitter, repo,
-                            destProject.getProject().getNameKey(),
-                            configFactory, groupFactory)) {
+        ModuleOwnerConfig config = configFactory.get(
+                destProject.getProject().getNameKey());
+        if (config == null) {
+            throw new MergeValidationException(DENY_STATUS);
+        }
+
+        if (!config.isModuleOwner(submitter.getAccountId(), repo, commit)) {
             throw new MergeValidationException(DENY_STATUS);
         }
         log.info("user {} submitted commit {}/{}",

@@ -5,9 +5,7 @@ import com.google.gerrit.extensions.restapi.RestReadView;
 import com.google.gerrit.reviewdb.client.Change;
 import com.google.gerrit.server.CurrentUser;
 import com.google.gerrit.server.IdentifiedUser;
-import com.google.gerrit.server.account.GroupInfoCacheFactory;
 import com.google.gerrit.server.change.RevisionResource;
-import com.google.gerrit.server.config.PluginConfigFactory;
 import com.google.gerrit.server.git.GitRepositoryManager;
 import com.google.gerrit.server.patch.PatchList;
 import com.google.gerrit.server.patch.PatchListCache;
@@ -22,8 +20,6 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 
-import static com.googlesource.gerrit.plugins.subreviewer.SubReviewerUtils.isPatchApproved;
-
 /**
  * REST endpoint for client script to determine whether the current user is a
  * module owner.
@@ -34,20 +30,17 @@ public class FileOwner implements RestReadView<RevisionResource> {
     private final GitRepositoryManager gitManager;
     private final Provider<CurrentUser> currentUserProvider;
     private final PatchListCache patchListCache;
-    private final PluginConfigFactory configFactory;
-    private final GroupInfoCacheFactory groupFactory;
+    private final ModuleOwnerConfigCache configCache;
 
     @Inject
     FileOwner(Provider<CurrentUser> currentUserProvider,
               GitRepositoryManager gitManager,
               PatchListCache patchListCache,
-              PluginConfigFactory configFactory,
-              GroupInfoCacheFactory groupFactory) {
+              ModuleOwnerConfigCache configCache) {
         this.currentUserProvider = currentUserProvider;
         this.gitManager = gitManager;
         this.patchListCache = patchListCache;
-        this.configFactory = configFactory;
-        this.groupFactory = groupFactory;
+        this.configCache = configCache;
     }
 
     @Override
@@ -58,6 +51,7 @@ public class FileOwner implements RestReadView<RevisionResource> {
             // user is not identified, bailing...
             return Response.ok(Status.NONE);
         }
+        IdentifiedUser submittingUser = (IdentifiedUser) submitter;
 
         /*
            FIXME consider using "dynamic-submit" capability instead because
@@ -77,12 +71,13 @@ public class FileOwner implements RestReadView<RevisionResource> {
         try (Repository repo = gitManager.openRepository(change.getProject())) {
             RevWalk rw = new RevWalk(repo.newObjectReader());
             PatchList curList = patchListCache.get(rev.getChange(), rev.getPatchSet());
-            if (isPatchApproved(rw.parseCommit(curList.getNewId()),
-                                submitter, repo, change.getProject(),
-                                configFactory, groupFactory)) {
+            ModuleOwnerConfig config = configCache.get(change.getProject());
+            if (config.isModuleOwner(submittingUser.getAccountId(), repo,
+                                     rw.parseCommit(curList.getNewId()))) {
                 return Response.ok(Status.APPROVED);
+            } else {
+                return Response.ok(Status.DENIED);
             }
-            return Response.ok(Status.DENIED);
         } catch (RepositoryNotFoundException e) {
             log.warn("Repo not found: {}", change.getProject(), e);
         } catch (IOException e) {
