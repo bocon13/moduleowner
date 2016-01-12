@@ -62,7 +62,7 @@ public class ReviewersByOwnership implements Runnable {
         if (config == null) {
             return;
         }
-        Set<Account.Id> reviewers = config.getModuleOwners(repo, commit);
+        Set<Account.Id> reviewers = config.getModuleOwners(repo, commit, change);
         addReviewers(reviewers, change);
     }
 

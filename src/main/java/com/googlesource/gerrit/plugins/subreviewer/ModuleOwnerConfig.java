@@ -3,12 +3,14 @@ package com.googlesource.gerrit.plugins.subreviewer;
 import com.google.common.base.MoreObjects;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
+import com.google.common.collect.Ordering;
 import com.google.common.collect.Sets;
 import com.google.gerrit.common.data.GroupDetail;
 import com.google.gerrit.common.errors.NoSuchGroupException;
 import com.google.gerrit.reviewdb.client.Account;
 import com.google.gerrit.reviewdb.client.AccountGroup;
 import com.google.gerrit.reviewdb.client.AccountGroupMember;
+import com.google.gerrit.reviewdb.client.Change;
 import com.google.gerrit.reviewdb.client.Project;
 import com.google.gerrit.server.account.AccountCache;
 import com.google.gerrit.server.account.AccountLoader;
@@ -29,6 +31,7 @@ import org.slf4j.LoggerFactory;
 
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -168,117 +171,92 @@ public class ModuleOwnerConfig {
         return result;
     }
 
-    public Set<Account.Id> getModuleOwners(Repository repo, RevCommit commit) {
+    public Set<Account.Id> getModuleOwners(Repository repo, RevCommit commit,
+                                           Change change) {
         List<String> files = getFilesInCommit(repo, commit);
 
-        Map<Key, Match> matchMap = Maps.newHashMap();
+        Map<Account.Id, Match> matchMap = getReviewersMap(files);
+        log.info("match map: {}", matchMap);
+        filterMatches(matchMap, change);
+        return findTopReviewers(matchMap);
+    }
+
+    private Map<Account.Id, Match> getReviewersMap(List<String> files) {
+        Map<Account.Id, Match> userToMatch = Maps.newHashMap();
+        GroupDetailSnapshot groupToUser = new GroupDetailSnapshot();
 
         for (String file : files) {
+            Map<Account.Id, String> patternMap = Maps.newHashMap();
             for (String pattern : allPatterns) {
                 if (Pattern.matches(pattern, file)) {
                     // found match
                     Set<Key> keys = patternToId.get(pattern);
                     for (Key k : keys) {
-                        Match match = matchMap.get(k);
-                        if (match == null) {
-                            match = new Match(k);
-                            matchMap.put(k, match);
+                        if (k.isUser() && !patternMap.containsKey(k.user)) {
+                            patternMap.put(k.user, pattern);
+                        } else {
+                            for (Account.Id user : groupToUser.getUsers(k.group)) {
+                                if (!patternMap.containsKey(k.user)) {
+                                    patternMap.put(user, pattern);
+                                }
+                            }
                         }
-                        match.addFile(pattern);
                     }
-                    // TODO do we want to check all patterns or break here
+                    // TODO do we want to check all patterns or break here?
+                }
             }
+            for (Map.Entry<Account.Id, String> entry : patternMap.entrySet()) {
+                Match match = userToMatch.get(entry.getKey());
+                if (match == null) {
+                    match = new Match(entry.getKey());
+                    userToMatch.put(entry.getKey(), match);
+                }
+                match.addFile(entry.getValue());
             }
         }
 
-        return findTopReviewers(matchMap);
+        return userToMatch;
     }
 
-    private Set<Account.Id> findTopReviewers(final Map<Key, Match> reviewers) {
+    private void filterMatches(Map<Account.Id, Match> matchMap, Change change) {
+        if (change != null) {
+            // remove the owner from the list of candidates
+            matchMap.remove(change.getOwner());
+        }
 
-        List<Map.Entry<Key, Match>> entries = Lists.newArrayList(reviewers.entrySet());
-        Collections.sort(entries, new Comparator<Map.Entry<Key, Match>>() {
-            @Override
-            public int compare(Map.Entry<Key, Match> o1, Map.Entry<Key, Match> o2) {
-                Match m1 = o1.getValue();
-                Match m2 = o2.getValue();
-                // reverse sort
-                if (m1.fileCount == m2.fileCount) {
-                    return m2.sumPatternLength - m1.sumPatternLength;
-                }
-                return m2.fileCount - m1.fileCount;
+        // remove an inactive accounts from the list of candidates
+        for(Iterator<Map.Entry<Account.Id, Match>> it = matchMap.entrySet().iterator(); it.hasNext(); ) {
+            Map.Entry<Account.Id, Match> entry = it.next();
+            Account account = accountCache.get(entry.getKey()).getAccount();
+            if (!account.isActive()) {
+                it.remove();
             }
-        });
+        }
+    }
+
+    private Set<Account.Id> findTopReviewers(final Map<Account.Id, Match> reviewers) {
+        Set<Account.Id> topReviewers = Sets.newHashSet();
+
+        List<Map.Entry<Account.Id, Match>> entries =
+                Ordering.from(new Comparator<Map.Entry<Account.Id, Match>>() {
+                    @Override
+                    public int compare(Map.Entry<Account.Id, Match> o1, Map.Entry<Account.Id, Match> o2) {
+                        Match m1 = o1.getValue();
+                        Match m2 = o2.getValue();
+                        // reverse sort (high to low)
+                        if (m1.fileCount == m2.fileCount) {
+                            return m2.sumPatternLength - m1.sumPatternLength;
+                        }
+                        return m2.fileCount - m1.fileCount;
+                    }
+                }).greatestOf(reviewers.entrySet(), this.maxReviewers);
+
         log.info("reviewers: {}", entries);
 
-        Set<Account.Id> topReviewers = Sets.newHashSet();
-        for (Map.Entry<Key, Match> entry : entries) {
-            Key key = entry.getKey();
-            if (key.isUser()) {
-                log.info("adding user: {}", key.user);
-                topReviewers.add(key.user);
-            } else {
-                List<Account.Id> users = getUsersForGroup(key);
-                for (Account.Id user : users) {
-                    topReviewers.add(user);
-                    log.info("adding user: {}", user);
-                    if (topReviewers.size() >= maxReviewers) {
-                        break;
-                    }
-                }
-            }
-            if (topReviewers.size() >= maxReviewers) {
-                break;
-            }
+        for (Map.Entry<Account.Id, Match> entry : entries) {
+            topReviewers.add(entry.getKey());
         }
-        // TODO should we skip owner?
-
-//        for (Account.Id id : ids) {
-//            Account account = accountCache.get(id).getAccount();
-//            if (account.isActive() && !change.getOwner().equals(account.getId())) {
-//                Integer count = reviewers.get(account);
-//                reviewers.put(account, count == null ? 1 : count.intValue() + 1);
-//            }
-//        }
-
-
         return topReviewers;
-    }
-
-    private List<Account.Id> getUsersForGroup(Key key) {
-        AccountGroup.UUID groupUUID = key.group;
-
-        AccountGroup group = groupCache.get(groupUUID);
-
-        final GroupDetail groupDetail;
-        try {
-            groupDetail = groupDetailFactory.create(group.getId()).call();
-        } catch (NoSuchGroupException e) {
-            // the included group is not visible
-            log.warn("Could not find group {}", group.getName(), e);
-            return Collections.emptyList();
-        } catch (OrmException e) {
-            log.warn("OrmException reading group {}", group.getName(), e);
-            //FIXME what to do?
-            return Collections.emptyList();
-        } catch (Exception e) {
-            //FIXME remove
-            log.warn("exception", e);
-            return Collections.emptyList();
-        }
-
-        if (groupDetail.members != null) {
-            List<Account.Id> users = Lists.newArrayListWithCapacity(
-                    groupDetail.members.size());
-            for (final AccountGroupMember m : groupDetail.members) {
-                users.add(m.getAccountId());
-            }
-            // randomize the list order
-            // FIXME use change-id or something as seed to avoid adding extra reviewers
-            Collections.shuffle(users);
-            return users;
-        }
-        return Collections.emptyList();
     }
 
     private List<String> getEffectivePathPatternsForUser(Account.Id user) {
@@ -301,7 +279,6 @@ public class ModuleOwnerConfig {
 
         return patterns;
     }
-
 
     /**
      * Ensures that every file matches at least one of the patterns.
@@ -385,13 +362,13 @@ public class ModuleOwnerConfig {
     }
 
     private static final class Match {
-        final Key key;
+        final Account.Id user;
 
         int fileCount;
         int sumPatternLength;
 
-        Match(Key key) {
-            this.key = key;
+        Match(Account.Id user) {
+            this.user = user;
         }
 
         void addFile(String pattern) {
@@ -402,10 +379,59 @@ public class ModuleOwnerConfig {
         @Override
         public String toString() {
             return MoreObjects.toStringHelper(this)
-                    .add("key", key)
+                    .add("user", user)
                     .add("fileCount", fileCount)
                     .add("sumPatternLength", sumPatternLength)
                     .toString();
         }
+    }
+
+    private final class GroupDetailSnapshot {
+        private final Map<AccountGroup.UUID, List<Account.Id>> groupToUser =
+                Maps.newHashMap();
+
+        List<Account.Id> getUsers(AccountGroup.UUID groupUUID) {
+            List<Account.Id> users = groupToUser.get(groupUUID);
+            if (users == null) {
+                users = getUsersForSnapshot(groupUUID);
+                groupToUser.put(groupUUID, users);
+            }
+            return users;
+        }
+
+        private List<Account.Id> getUsersForSnapshot(AccountGroup.UUID groupUUID) {
+            AccountGroup group = groupCache.get(groupUUID);
+
+            final GroupDetail groupDetail;
+            try {
+                groupDetail = groupDetailFactory.create(group.getId()).call();
+            } catch (NoSuchGroupException e) {
+                // the included group is not visible
+                log.warn("Could not find group {}", group.getName(), e);
+                return Collections.emptyList();
+            } catch (OrmException e) {
+                log.warn("OrmException reading group {}", group.getName(), e);
+                //FIXME what to do?
+                return Collections.emptyList();
+            } catch (Exception e) {
+                //FIXME remove
+                log.warn("exception", e);
+                return Collections.emptyList();
+            }
+
+            if (groupDetail.members != null) {
+                List<Account.Id> users = Lists.newArrayListWithCapacity(
+                        groupDetail.members.size());
+                for (final AccountGroupMember m : groupDetail.members) {
+                    users.add(m.getAccountId());
+                }
+                // randomize the list order
+                // FIXME use change-id or something as seed to avoid adding extra reviewers
+                Collections.shuffle(users);
+                return users;
+            }
+            return Collections.emptyList();
+        }
+
     }
 }
