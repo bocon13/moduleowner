@@ -1,4 +1,4 @@
-package com.googlesource.gerrit.plugins.subreviewer;
+package com.googlesource.gerrit.plugins.moduleowner;
 
 import com.google.gerrit.common.EventListener;
 import com.google.gerrit.extensions.events.UsageDataPublishedListener;
@@ -26,7 +26,7 @@ class Module extends FactoryModule {
       install(new RestApiModule() {
           @Override
           protected void configure() {
-              get(REVISION_KIND, "module-owner").to(GetModuleOwner.class);
+              get(REVISION_KIND, "moduleowner").to(GetModuleOwner.class);
           }
       });
       install(ModuleOwnerConfigCacheImpl.module());

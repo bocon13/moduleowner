@@ -1,4 +1,4 @@
-package com.googlesource.gerrit.plugins.subreviewer;
+package com.googlesource.gerrit.plugins.moduleowner;
 
 import com.google.common.cache.CacheLoader;
 import com.google.common.cache.LoadingCache;

@@ -1,4 +1,4 @@
-package com.googlesource.gerrit.plugins.subreviewer;
+package com.googlesource.gerrit.plugins.moduleowner;
 
 import com.google.gerrit.extensions.api.changes.AddReviewerInput;
 import com.google.gerrit.reviewdb.client.Account;

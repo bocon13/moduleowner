@@ -1,4 +1,4 @@
-package com.googlesource.gerrit.plugins.subreviewer;
+package com.googlesource.gerrit.plugins.moduleowner;
 
 import com.google.common.util.concurrent.CheckedFuture;
 import com.google.gerrit.common.EventListener;
@@ -43,9 +43,9 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 
-import static com.googlesource.gerrit.plugins.subreviewer.ModuleOwnerConfig.CODE_REVIEW_LABEL;
-import static com.googlesource.gerrit.plugins.subreviewer.ModuleOwnerConfig.MODULE_OWNER_LABEL;
-import static com.googlesource.gerrit.plugins.subreviewer.SubReviewerUtils.getAccountFromAttribute;
+import static com.googlesource.gerrit.plugins.moduleowner.ModuleOwnerConfig.CODE_REVIEW_LABEL;
+import static com.googlesource.gerrit.plugins.moduleowner.ModuleOwnerConfig.MODULE_OWNER_LABEL;
+import static com.googlesource.gerrit.plugins.moduleowner.ModuleOwnerUtils.getAccountFromAttribute;
 
 /**
  * Listener for change events, specifically patch set created events.
@@ -287,6 +287,7 @@ class ChangeEventListener implements EventListener {
         try {
             type.apply(reviewDb, approval);
             reviewDb.commit();
+            log.info("Change in module owner approval: {} {}", type, approval);
         } catch (Exception e) {
             log.error("Exception adding reviewer to change {}", changeId, e);
         } finally {

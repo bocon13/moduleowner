@@ -1,15 +1,13 @@
-package com.googlesource.gerrit.plugins.subreviewer;
+package com.googlesource.gerrit.plugins.moduleowner;
 
 import com.google.common.collect.Lists;
 import com.google.gerrit.extensions.annotations.PluginName;
 import com.google.gerrit.extensions.client.GerritTopMenu;
 import com.google.gerrit.extensions.webui.TopMenu;
 import com.google.gerrit.server.CurrentUser;
-import com.google.gerrit.server.account.CapabilityControl;
 import com.google.inject.Inject;
 import com.google.inject.Provider;
 
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 

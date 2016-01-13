@@ -1,4 +1,4 @@
-package com.googlesource.gerrit.plugins.subreviewer;
+package com.googlesource.gerrit.plugins.moduleowner;
 
 import com.google.gerrit.extensions.registration.DynamicSet;
 import com.google.gerrit.extensions.webui.JavaScriptPlugin;
@@ -9,7 +9,7 @@ class HttpModule extends ServletModule {
   @Override
   protected void configureServlets() {
       DynamicSet.bind(binder(), WebUiPlugin.class)
-              .toInstance(new JavaScriptPlugin("subreviewer.js"));
+              .toInstance(new JavaScriptPlugin("moduleowner.js"));
       // Serve Module Owners page
       serve("/owners/*").with(ModuleOwnersServlet.class);
   }

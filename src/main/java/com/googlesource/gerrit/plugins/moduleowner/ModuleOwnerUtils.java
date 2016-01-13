@@ -1,4 +1,4 @@
-package com.googlesource.gerrit.plugins.subreviewer;
+package com.googlesource.gerrit.plugins.moduleowner;
 
 import autovalue.shaded.com.google.common.common.collect.Lists;
 import com.google.gerrit.reviewdb.client.Account;
@@ -22,8 +22,8 @@ import java.util.List;
 /**
  * Collection of utilities.
  */
-public class SubReviewerUtils {
-    private static final Logger log = LoggerFactory.getLogger(SubReviewerUtils.class);
+public class ModuleOwnerUtils {
+    private static final Logger log = LoggerFactory.getLogger(ModuleOwnerUtils.class);
 
     /**
      * Returns the list of files changed in a specified commit.

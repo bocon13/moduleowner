@@ -40,7 +40,7 @@ Gerrit.install(function(self) {
             + "/"
             + self.getPluginName()
             + "~"
-            + "module-owner";
+            + "moduleowner";
         Gerrit.get(url, function(r) {
             console.log('Module-Owner: ' + r);
             self.moduleOwner = r;

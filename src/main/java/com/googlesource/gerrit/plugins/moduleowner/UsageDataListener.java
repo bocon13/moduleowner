@@ -1,4 +1,4 @@
-package com.googlesource.gerrit.plugins.subreviewer;
+package com.googlesource.gerrit.plugins.moduleowner;
 
 import com.google.gerrit.extensions.events.UsageDataPublishedListener;
 import org.slf4j.Logger;
@@ -8,7 +8,7 @@ import org.slf4j.LoggerFactory;
  * Usage data listener which logs data for test purposes.
  */
 public class UsageDataListener implements UsageDataPublishedListener {
-    private static final Logger log = LoggerFactory.getLogger(SubReviewerUtils.class);
+    private static final Logger log = LoggerFactory.getLogger(ModuleOwnerUtils.class);
 
     @Override
     public void onUsageDataPublished(Event event) {

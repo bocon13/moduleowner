@@ -1,11 +1,10 @@
-package com.googlesource.gerrit.plugins.subreviewer;
+package com.googlesource.gerrit.plugins.moduleowner;
 
 import com.google.common.base.MoreObjects;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Ordering;
 import com.google.common.collect.Sets;
-import com.google.gerrit.common.data.LabelType;
 import com.google.gerrit.common.data.LabelTypes;
 import com.google.gerrit.reviewdb.client.Account;
 import com.google.gerrit.reviewdb.client.AccountGroup;
@@ -42,7 +41,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.regex.Pattern;
 
-import static com.googlesource.gerrit.plugins.subreviewer.SubReviewerUtils.getFilesInCommit;
+import static com.googlesource.gerrit.plugins.moduleowner.ModuleOwnerUtils.getFilesInCommit;
 
 /**
  * Snapshot of the module owner configuration created at object construction time.
@@ -52,7 +51,7 @@ public class ModuleOwnerConfig {
 
     public static final String CODE_REVIEW_LABEL = "Code-Review";
     public static final String MODULE_OWNER_LABEL = "Module-Owner";
-    private static final String PLUGIN_NAME = "subreviewer";
+    private static final String PLUGIN_NAME = "moduleowner";
     private static final String CONFIG_USER = "user";
     private static final String CONFIG_GROUP = "group";
     private static final String CONFIG_PATH = "path";
@@ -148,7 +147,7 @@ public class ModuleOwnerConfig {
     private boolean checkEnabled() {
         ProjectState projectState = projectCache.get(projectName);
         LabelTypes labelTypes = projectState.getLabelTypes();
-        log.info("Labels: {}", projectName, labelTypes);
+        log.info("Labels: {}", labelTypes);
         return labelTypes.byLabel(MODULE_OWNER_LABEL) != null;
     }
 

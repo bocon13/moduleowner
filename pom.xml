@@ -3,8 +3,8 @@
   xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
   <modelVersion>4.0.0</modelVersion>
 
-  <groupId>com.googlesource.gerrit.plugins.subreviewer</groupId>
-  <artifactId>subreviewer</artifactId>
+  <groupId>com.googlesource.gerrit.plugins.moduleowner</groupId>
+  <artifactId>moduleowner</artifactId>
   <packaging>jar</packaging>
   <version>2.11-SNAPSHOT</version>
 
@@ -22,9 +22,9 @@
         <configuration>
           <archive>
             <manifestEntries>
-              <Gerrit-PluginName>subreviewer</Gerrit-PluginName>
-              <Gerrit-Module>com.googlesource.gerrit.plugins.subreviewer.Module</Gerrit-Module>
-              <Gerrit-HttpModule>com.googlesource.gerrit.plugins.subreviewer.HttpModule</Gerrit-HttpModule>
+              <Gerrit-PluginName>moduleowner</Gerrit-PluginName>
+              <Gerrit-Module>com.googlesource.gerrit.plugins.moduleowner.Module</Gerrit-Module>
+              <Gerrit-HttpModule>com.googlesource.gerrit.plugins.moduleowner.HttpModule</Gerrit-HttpModule>
 
               <Implementation-Vendor>Gerrit Code Review</Implementation-Vendor>
               <Implementation-URL>http://code.google.com/p/gerrit/</Implementation-URL>

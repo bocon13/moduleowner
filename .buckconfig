@@ -1,6 +1,6 @@
 [alias]
-  subReviewer = //:subreviewer
-  plugin = //:subreviewer
+  moduleowner = //:moduleowner
+  plugin = //:moduleowner
 
 [java]
   src_roots = java, resources
