@@ -1,5 +1,6 @@
 package com.googlesource.gerrit.plugins.moduleowner;
 
+import com.google.common.collect.Ordering;
 import com.google.gerrit.extensions.annotations.PluginCanonicalWebUrl;
 import com.google.gerrit.extensions.annotations.PluginName;
 import com.google.gerrit.reviewdb.client.Account;
@@ -17,6 +18,7 @@ import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.io.Writer;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 
@@ -73,7 +75,7 @@ class ModuleOwnersServlet extends HttpServlet {
 
     private String generateReply(ModuleOwnerConfig config) {
         StringBuilder sb = new StringBuilder();
-        for (Map.Entry<Account, List<String>> entry : config.getPatternMap().entrySet()) {
+        for (Map.Entry<Account, List<String>> entry : getUsers(config)) {
             sb.append("<h3>");
             sb.append(entry.getKey().getFullName());
             sb.append("</h3>");
@@ -86,6 +88,17 @@ class ModuleOwnersServlet extends HttpServlet {
             sb.append("</ul>\n");
         }
         return sb.toString();
+    }
+
+    private List<Map.Entry<Account, List<String>>> getUsers(ModuleOwnerConfig config) {
+        return Ordering.from(new Comparator<Map.Entry<Account, List<String>>>() {
+            @Override
+            public int compare(Map.Entry<Account, List<String>> o1,
+                               Map.Entry<Account, List<String>> o2) {
+                return o1.getKey().getFullName()
+                        .compareToIgnoreCase(o2.getKey().getFullName());
+            }
+        }).immutableSortedCopy(config.getPatternMap().entrySet());
     }
 
     private boolean canView() {
