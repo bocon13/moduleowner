@@ -5,15 +5,14 @@ import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Ordering;
 import com.google.common.collect.Sets;
-import com.google.gerrit.common.data.GroupDetail;
 import com.google.gerrit.common.data.LabelType;
 import com.google.gerrit.common.data.LabelTypes;
-import com.google.gerrit.common.errors.NoSuchGroupException;
 import com.google.gerrit.reviewdb.client.Account;
 import com.google.gerrit.reviewdb.client.AccountGroup;
 import com.google.gerrit.reviewdb.client.AccountGroupMember;
 import com.google.gerrit.reviewdb.client.Change;
 import com.google.gerrit.reviewdb.client.Project;
+import com.google.gerrit.reviewdb.server.ReviewDb;
 import com.google.gerrit.server.account.AccountCache;
 import com.google.gerrit.server.account.AccountLoader;
 import com.google.gerrit.server.account.AccountResolver;
@@ -22,8 +21,10 @@ import com.google.gerrit.server.account.GroupCache;
 import com.google.gerrit.server.account.GroupDetailFactory;
 import com.google.gerrit.server.config.PluginConfigFactory;
 import com.google.gerrit.server.project.NoSuchProjectException;
+import com.google.gerrit.server.project.ProjectCache;
 import com.google.gerrit.server.project.ProjectState;
 import com.google.gwtorm.server.OrmException;
+import com.google.gwtorm.server.SchemaFactory;
 import com.google.inject.Inject;
 import com.google.inject.assistedinject.Assisted;
 import org.eclipse.jgit.lib.Config;
@@ -65,37 +66,47 @@ public class ModuleOwnerConfig {
     private final Map<String, Set<Key>> patternToId = Maps.newHashMap();
     private final List<String> allPatterns;
     private final int maxReviewers;
+    private final boolean enabled;
 
     private final PluginConfigFactory configFactory;
     private final AccountResolver accountResolver;
     private final AccountCache accountCache;
     private final GroupCache groupCache;
+    private final ProjectCache projectCache;
     private final GroupDetailFactory.Factory groupDetailFactory;
     private final AccountLoader.Factory accountLoader;
+    private final SchemaFactory<ReviewDb> schemaFactory;
+
 
     @Inject
     ModuleOwnerConfig(PluginConfigFactory configFactory,
-                             AccountResolver accountResolver,
-                             AccountCache accountCache,
-                             GroupCache groupCache,
-                             GroupDetailFactory.Factory groupDetailFactory,
-                             AccountLoader.Factory accountLoader,
-                             @Assisted Project.NameKey projectName) {
+                      AccountResolver accountResolver,
+                      AccountCache accountCache,
+                      GroupCache groupCache,
+                      ProjectCache projectCache,
+                      GroupDetailFactory.Factory groupDetailFactory,
+                      AccountLoader.Factory accountLoader,
+                      SchemaFactory<ReviewDb> schemaFactory,
+                      @Assisted Project.NameKey projectName) {
         this.projectName = projectName;
+        log.info("Initializing module owner config for {}", projectName);
 
         this.configFactory = configFactory;
         this.accountResolver = accountResolver;
         this.accountCache = accountCache;
         this.groupCache = groupCache;
+        this.projectCache = projectCache;
         this.groupDetailFactory = groupDetailFactory;
         this.accountLoader = accountLoader;
+        this.schemaFactory = schemaFactory;
 
         initConfig();
 
         allPatterns = Lists.newArrayList(patternToId.keySet());
         sortPatterns(allPatterns);
 
-        maxReviewers = 3; //FIXME read from config
+        maxReviewers = 3;
+        enabled = checkEnabled();
     }
 
     private void initConfig() {
@@ -103,7 +114,7 @@ public class ModuleOwnerConfig {
         try {
             config = configFactory.getProjectPluginConfigWithInheritance(projectName, PLUGIN_NAME);
         } catch (NoSuchProjectException e) {
-            log.warn("No such project {}", projectName, e);
+            log.error("No such project {}", projectName, e);
         }
 
         for (String username : config.getSubsections(CONFIG_USER)) {
@@ -132,6 +143,13 @@ public class ModuleOwnerConfig {
             log.info("Processing group: {} ({}) with patterns: {}",
                       groupname, group.getGroupUUID(), pathPatterns);
         }
+    }
+
+    private boolean checkEnabled() {
+        ProjectState projectState = projectCache.get(projectName);
+        LabelTypes labelTypes = projectState.getLabelTypes();
+        log.info("Labels: {}", projectName, labelTypes);
+        return labelTypes.byLabel(MODULE_OWNER_LABEL) != null;
     }
 
     private Account getAccountFromName(String name) {
@@ -165,14 +183,7 @@ public class ModuleOwnerConfig {
     }
 
     public boolean isEnabled() {
-        //FIXME check labels from project
-//        ProjectState projectState = projectCache.get(projectName);
-//        LabelTypes labelTypes = projectState.getLabelTypes();
-//        log.info("labels: {}", labelTypes);
-//        LabelType codeReviewLabel = labelTypes.byLabel(CODE_REVIEW_LABEL); //FIXME
-//        LabelType moduleOwnerLabel = labelTypes.byLabel(MODULE_OWNER_LABEL); //FIXME
-
-        return true;
+        return enabled;
     }
 
     public boolean isModuleOwner(Account.Id user, Repository repo, RevCommit commit) {
@@ -197,43 +208,46 @@ public class ModuleOwnerConfig {
         List<String> files = getFilesInCommit(repo, commit);
 
         Map<Account.Id, Match> matchMap = getReviewersMap(files);
-        log.info("match map: {}", matchMap);
         filterMatches(matchMap, change);
         return findTopReviewers(matchMap);
     }
 
     private Map<Account.Id, Match> getReviewersMap(List<String> files) {
         Map<Account.Id, Match> userToMatch = Maps.newHashMap();
-        GroupDetailSnapshot groupToUser = new GroupDetailSnapshot();
+        try (ReviewDb db = schemaFactory.open()){
+            GroupDetailSnapshot groupToUser = new GroupDetailSnapshot(db);
 
-        for (String file : files) {
-            Map<Account.Id, String> patternMap = Maps.newHashMap();
-            for (String pattern : allPatterns) {
-                if (Pattern.matches(pattern, file)) {
-                    // found match
-                    Set<Key> keys = patternToId.get(pattern);
-                    for (Key k : keys) {
-                        if (k.isUser() && !patternMap.containsKey(k.user)) {
-                            patternMap.put(k.user, pattern);
-                        } else {
-                            for (Account.Id user : groupToUser.getUsers(k.group)) {
-                                if (!patternMap.containsKey(k.user)) {
-                                    patternMap.put(user, pattern);
+            for (String file : files) {
+                Map<Account.Id, String> patternMap = Maps.newHashMap();
+                for (String pattern : allPatterns) {
+                    if (Pattern.matches(pattern, file)) {
+                        // found match
+                        Set<Key> keys = patternToId.get(pattern);
+                        for (Key k : keys) {
+                            if (k.isUser() && !patternMap.containsKey(k.user)) {
+                                patternMap.put(k.user, pattern);
+                            } else {
+                                for (Account.Id user : groupToUser.getUsers(k.group)) {
+                                    if (!patternMap.containsKey(k.user)) {
+                                        patternMap.put(user, pattern);
+                                    }
                                 }
                             }
                         }
+                        // TODO do we want to check all patterns or break here?
                     }
-                    // TODO do we want to check all patterns or break here?
+                }
+                for (Map.Entry<Account.Id, String> entry : patternMap.entrySet()) {
+                    Match match = userToMatch.get(entry.getKey());
+                    if (match == null) {
+                        match = new Match(entry.getKey());
+                        userToMatch.put(entry.getKey(), match);
+                    }
+                    match.addFile(entry.getValue());
                 }
             }
-            for (Map.Entry<Account.Id, String> entry : patternMap.entrySet()) {
-                Match match = userToMatch.get(entry.getKey());
-                if (match == null) {
-                    match = new Match(entry.getKey());
-                    userToMatch.put(entry.getKey(), match);
-                }
-                match.addFile(entry.getValue());
-            }
+        } catch (OrmException e) {
+            log.error("Error getting reviewers for project {}", projectName, e);
         }
 
         return userToMatch;
@@ -272,8 +286,6 @@ public class ModuleOwnerConfig {
                     }
                 }).greatestOf(reviewers.entrySet(), this.maxReviewers);
 
-        log.info("reviewers: {}", entries);
-
         for (Map.Entry<Account.Id, Match> entry : entries) {
             topReviewers.add(entry.getKey());
         }
@@ -303,34 +315,41 @@ public class ModuleOwnerConfig {
 
     public Map<Account, List<String>> getPatternMap() {
         Map<Account.Id, List<String>> idMap = Maps.newHashMap();
-        GroupDetailSnapshot groupToUser = new GroupDetailSnapshot();
 
-        for (Map.Entry<Key, List<String>> entry : idToPatterns.entrySet()) {
-            Key key = entry.getKey();
-            if (key.isUser()) {
-                List<String> existingPatterns = idMap.get(key.user);
-                if (existingPatterns == null) {
-                    existingPatterns = Lists.newArrayList(entry.getValue());
-                    idMap.put(key.user, existingPatterns);
-                } else {
-                    existingPatterns.addAll(entry.getValue());
-                }
-            } else {
-                for (Account.Id user : groupToUser.getUsers(key.group)) {
-                    List<String> existingPatterns = idMap.get(user);
+        try (ReviewDb db = schemaFactory.open()) {
+            GroupDetailSnapshot groupToUser = new GroupDetailSnapshot(db);
+
+            for (Map.Entry<Key, List<String>> entry : idToPatterns.entrySet()) {
+                Key key = entry.getKey();
+                if (key.isUser()) {
+                    List<String> existingPatterns = idMap.get(key.user);
                     if (existingPatterns == null) {
                         existingPatterns = Lists.newArrayList(entry.getValue());
-                        idMap.put(user, existingPatterns);
+                        idMap.put(key.user, existingPatterns);
                     } else {
                         existingPatterns.addAll(entry.getValue());
                     }
+                } else {
+                    for (Account.Id user : groupToUser.getUsers(key.group)) {
+                        List<String> existingPatterns = idMap.get(user);
+                        if (existingPatterns == null) {
+                            existingPatterns = Lists.newArrayList(entry.getValue());
+                            idMap.put(user, existingPatterns);
+                        } else {
+                            existingPatterns.addAll(entry.getValue());
+                        }
+                    }
                 }
             }
+        } catch (OrmException e) {
+            log.error("Error getting user to pattern map for project {}", projectName, e);
         }
 
         Map<Account, List<String>> userMap = Maps.newHashMapWithExpectedSize(idMap.size());
         for (Map.Entry<Account.Id, List<String>> entry : idMap.entrySet()) {
-            userMap.put(accountCache.get(entry.getKey()).getAccount(), entry.getValue());
+            // TODO remove duplicates in a better way
+            List<String> patterns = Lists.newArrayList(Sets.newHashSet(entry.getValue()));
+            userMap.put(accountCache.get(entry.getKey()).getAccount(), patterns);
         }
         return userMap;
     }
@@ -442,8 +461,12 @@ public class ModuleOwnerConfig {
     }
 
     private final class GroupDetailSnapshot {
-        private final Map<AccountGroup.UUID, List<Account.Id>> groupToUser =
-                Maps.newHashMap();
+        private final Map<AccountGroup.UUID, List<Account.Id>> groupToUser = Maps.newHashMap();
+        private final ReviewDb db;
+
+        GroupDetailSnapshot(ReviewDb db) {
+            this.db = db;
+        }
 
         List<Account.Id> getUsers(AccountGroup.UUID groupUUID) {
             List<Account.Id> users = groupToUser.get(groupUUID);
@@ -457,35 +480,20 @@ public class ModuleOwnerConfig {
         private List<Account.Id> getUsersForSnapshot(AccountGroup.UUID groupUUID) {
             AccountGroup group = groupCache.get(groupUUID);
 
-            final GroupDetail groupDetail;
+            // Don't use groupDetailFactory because it only show current user's visible groups
             try {
-                groupDetail = groupDetailFactory.create(group.getId()).call();
-            } catch (NoSuchGroupException e) {
-                // the included group is not visible
-                log.warn("Could not find group {}", group.getName(), e);
-                return Collections.emptyList();
-            } catch (OrmException e) {
-                log.warn("OrmException reading group {}", group.getName(), e);
-                //FIXME what to do?
-                return Collections.emptyList();
-            } catch (Exception e) {
-                //FIXME remove
-                log.warn("exception", e);
-                return Collections.emptyList();
-            }
-
-            if (groupDetail.members != null) {
-                List<Account.Id> users = Lists.newArrayListWithCapacity(
-                        groupDetail.members.size());
-                for (final AccountGroupMember m : groupDetail.members) {
-                    users.add(m.getAccountId());
+                List<AccountGroupMember> members = db.accountGroupMembers().byGroup(group.getId()).toList();
+                List<Account.Id> accountIds = Lists.newArrayListWithCapacity(members.size());
+                for (AccountGroupMember member : members) {
+                    accountIds.add(member.getAccountId());
                 }
-                // randomize the list order
-                // FIXME use change-id or something as seed to avoid adding extra reviewers
-                Collections.shuffle(users);
-                return users;
+                Collections.shuffle(accountIds);
+                log.debug("Loaded group {} with {}", group.getName(), accountIds);
+                return accountIds;
+            } catch (OrmException e) {
+                log.error("Error loading group {}", group.getName(), e);
+                return Collections.emptyList();
             }
-            return Collections.emptyList();
         }
 
     }

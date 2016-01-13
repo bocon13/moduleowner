@@ -5,31 +5,22 @@ import com.google.gerrit.common.EventListener;
 import com.google.gerrit.common.TimeUtil;
 import com.google.gerrit.common.data.LabelType;
 import com.google.gerrit.common.data.LabelTypes;
-import com.google.gerrit.extensions.api.changes.ReviewInput;
-import com.google.gerrit.extensions.restapi.AuthException;
-import com.google.gerrit.extensions.restapi.BadRequestException;
-import com.google.gerrit.extensions.restapi.ResourceConflictException;
-import com.google.gerrit.extensions.restapi.UnprocessableEntityException;
 import com.google.gerrit.reviewdb.client.Account;
 import com.google.gerrit.reviewdb.client.Change;
 import com.google.gerrit.reviewdb.client.PatchSet;
 import com.google.gerrit.reviewdb.client.PatchSetApproval;
 import com.google.gerrit.reviewdb.client.Project;
 import com.google.gerrit.reviewdb.server.ReviewDb;
-import com.google.gerrit.server.ApprovalsUtil;
 import com.google.gerrit.server.CurrentUser;
 import com.google.gerrit.server.IdentifiedUser;
 import com.google.gerrit.server.account.AccountCache;
 import com.google.gerrit.server.account.AccountResolver;
-import com.google.gerrit.server.change.RevisionResource;
 import com.google.gerrit.server.events.CommentAddedEvent;
 import com.google.gerrit.server.events.Event;
 import com.google.gerrit.server.events.PatchSetCreatedEvent;
 import com.google.gerrit.server.git.GitRepositoryManager;
 import com.google.gerrit.server.git.WorkQueue;
 import com.google.gerrit.server.index.ChangeIndexer;
-import com.google.gerrit.server.notedb.ChangeUpdate;
-import com.google.gerrit.server.project.ChangeControl;
 import com.google.gerrit.server.project.ProjectCache;
 import com.google.gerrit.server.project.ProjectState;
 import com.google.gerrit.server.util.RequestContext;
@@ -48,7 +39,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
-import java.sql.Timestamp;
 import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
@@ -67,10 +57,8 @@ class ChangeEventListener implements EventListener {
     private final GitRepositoryManager repoManager;
     private final WorkQueue workQueue;
 
-    private final ChangeControl.GenericFactory changeControlFactory;
     private final IdentifiedUser.GenericFactory userFactory;
     private final ReviewersByOwnership.Factory reviewersFactory;
-    private final ChangeUpdate.Factory changeFactory;
 
     private final ChangeIndexer indexer;
     private final ThreadLocalRequestContext tl;
@@ -87,7 +75,6 @@ class ChangeEventListener implements EventListener {
             final GitRepositoryManager repoManager,
             final WorkQueue workQueue,
             final IdentifiedUser.GenericFactory userFactory,
-            final ChangeControl.GenericFactory changeControlFactory,
             final ChangeIndexer indexer,
             final ThreadLocalRequestContext tl,
             final AccountCache accountCache,
@@ -95,12 +82,10 @@ class ChangeEventListener implements EventListener {
             final SchemaFactory<ReviewDb> schemaFactory,
             final ModuleOwnerConfigCache moduleOwnerConfigCache,
             final ProjectCache projectCache,
-            final ReviewersByOwnership.Factory reviewersFactory,
-            final ChangeUpdate.Factory changeFactory) {
+            final ReviewersByOwnership.Factory reviewersFactory) {
         this.repoManager = repoManager;
         this.workQueue = workQueue;
         this.userFactory = userFactory;
-        this.changeControlFactory = changeControlFactory;
         this.accountCache = accountCache;
         this.accountResolver = accountResolver;
         this.indexer = indexer;
@@ -109,7 +94,6 @@ class ChangeEventListener implements EventListener {
         this.moduleOwnerConfigCache = moduleOwnerConfigCache;
         this.reviewersFactory = reviewersFactory;
         this.projectCache = projectCache;
-        this.changeFactory = changeFactory;
     }
 
     @Override
@@ -120,7 +104,7 @@ class ChangeEventListener implements EventListener {
             // New patch set available, automatically add module owners as reviewers
             addReviewers((PatchSetCreatedEvent) event);
         } else if (event instanceof CommentAddedEvent) {
-            // TODO New review available, add owner label if appropriate
+            // New review available, add owner label if appropriate
             updateLabels((CommentAddedEvent) event);
         }
         // else, dropping event
@@ -206,7 +190,6 @@ class ChangeEventListener implements EventListener {
         // FIXME run in the background???
         ProjectState projectState = projectCache.get(projectName);
         LabelTypes labelTypes = projectState.getLabelTypes();
-        log.info("labels: {}", labelTypes);
         LabelType codeReviewLabel = labelTypes.byLabel(CODE_REVIEW_LABEL);
         LabelType moduleOwnerLabel = labelTypes.byLabel(MODULE_OWNER_LABEL);
         if (codeReviewLabel == null || moduleOwnerLabel == null) {
@@ -233,7 +216,6 @@ class ChangeEventListener implements EventListener {
             } else if (Objects.equals(approval.getLabel(), moduleOwnerLabel.getName())) {
                 existingModuleOwnerApproval = approval;
             }
-            log.info("found approval:" + approval);
         }
 
         if (config.isModuleOwner(user.getId(), repo, commit)) {
@@ -305,9 +287,8 @@ class ChangeEventListener implements EventListener {
         try {
             type.apply(reviewDb, approval);
             reviewDb.commit();
-            log.info("committed {}: {}", type, approval);
         } catch (Exception e) {
-            log.warn("db write exception", e);
+            log.error("Exception adding reviewer to change {}", changeId, e);
         } finally {
             reviewDb.rollback();
         }
@@ -319,39 +300,39 @@ class ChangeEventListener implements EventListener {
         workQueue.getDefaultQueue().submit(new Runnable() {
             @Override
             public void run() {
-                RequestContext old = tl.setContext(new RequestContext() {
+            RequestContext old = tl.setContext(new RequestContext() {
 
-                    @Override
-                    public CurrentUser getCurrentUser() {
-                        return userFactory.create(change.getOwner());
-                    }
-
-                    @Override
-                    public Provider<ReviewDb> getReviewDbProvider() {
-                        return new Provider<ReviewDb>() {
-                            @Override
-                            public ReviewDb get() {
-                                if (db == null) {
-                                    try {
-                                        db = schemaFactory.open();
-                                    } catch (OrmException e) {
-                                        throw new ProvisionException("Cannot open ReviewDb", e);
-                                    }
-                                }
-                                return db;
-                            }
-                        };
-                    }
-                });
-                try {
-                    task.run();
-                } finally {
-                    tl.setContext(old);
-                    if (db != null) {
-                        db.close();
-                        db = null;
-                    }
+                @Override
+                public CurrentUser getCurrentUser() {
+                    return userFactory.create(change.getOwner());
                 }
+
+                @Override
+                public Provider<ReviewDb> getReviewDbProvider() {
+                    return new Provider<ReviewDb>() {
+                        @Override
+                        public ReviewDb get() {
+                        if (db == null) {
+                            try {
+                                db = schemaFactory.open();
+                            } catch (OrmException e) {
+                                throw new ProvisionException("Cannot open ReviewDb", e);
+                            }
+                        }
+                        return db;
+                        }
+                    };
+                }
+            });
+            try {
+                task.run();
+            } finally {
+                tl.setContext(old);
+                if (db != null) {
+                    db.close();
+                    db = null;
+                }
+            }
             }
         });
     }

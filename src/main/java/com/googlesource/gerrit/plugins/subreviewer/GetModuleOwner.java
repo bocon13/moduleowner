@@ -62,16 +62,20 @@ public class GetModuleOwner implements RestReadView<RevisionResource> {
             return Response.ok(Status.NONE);
         }
 
-        // Don't displace status for DRAFT, MERGED, SUBMITTED, or ABANDONED changes
-        if (rev.getChange().getStatus() != Change.Status.NEW) {
+        Change change = rev.getChange();
+        // Don't display status for DRAFT, MERGED, SUBMITTED, or ABANDONED changes
+        if (change.getStatus() != Change.Status.NEW) {
             return Response.ok(Status.NONE);
         }
 
-        Change change = rev.getChange();
+        ModuleOwnerConfig config = configCache.get(change.getProject());
+        if (!config.isEnabled()) {
+            return Response.ok(Status.NONE);
+        }
+
         try (Repository repo = gitManager.openRepository(change.getProject())) {
             RevWalk rw = new RevWalk(repo.newObjectReader());
             PatchList curList = patchListCache.get(rev.getChange(), rev.getPatchSet());
-            ModuleOwnerConfig config = configCache.get(change.getProject());
             if (config.isModuleOwner(submittingUser.getAccountId(), repo,
                                      rw.parseCommit(curList.getNewId()))) {
                 return Response.ok(Status.APPROVED);

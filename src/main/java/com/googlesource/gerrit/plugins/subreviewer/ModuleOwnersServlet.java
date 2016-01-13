@@ -89,7 +89,7 @@ class ModuleOwnersServlet extends HttpServlet {
     }
 
     private boolean canView() {
-        //FIXME
+        //TODO we just check if a user is logged in for now, we might want a better method
         return userProvider.get().isIdentifiedUser();
     }
 }

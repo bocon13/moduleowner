@@ -18,7 +18,6 @@ class Module extends FactoryModule {
       DynamicSet.bind(binder(), UsageDataPublishedListener.class).to(UsageDataListener.class);
       DynamicSet.bind(binder(), TopMenu.class).to(OwnersTopMenu.class);
 
-
       // TODO finish implementation of DynamicSubmit and re-enable
 //      bind(CapabilityDefinition.class)
 //              .annotatedWith(Exports.named(DynamicSubmitCapability.DYANMIC_SUBMIT))
@@ -30,9 +29,6 @@ class Module extends FactoryModule {
               get(REVISION_KIND, "module-owner").to(GetModuleOwner.class);
           }
       });
-
-
-
       install(ModuleOwnerConfigCacheImpl.module());
 
       factory(ModuleOwnerConfig.Factory.class);

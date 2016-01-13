@@ -93,9 +93,9 @@ public class SubReviewerUtils {
     }
 
     public static Account getAccountFromAttribute(AccountAttribute attribute,
-                                           AccountCache cache,
-                                           AccountResolver resolver) {
-        //FIXME this could be greatly simplified by adding Account.Id to AccountAttribute
+                                                  AccountCache cache,
+                                                  AccountResolver resolver) {
+        //TODO this could be greatly simplified by adding Account.Id to AccountAttribute
         Account account = cache.getByUsername(attribute.username).getAccount();
         if (account == null) {
             try {

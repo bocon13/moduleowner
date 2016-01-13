@@ -81,6 +81,7 @@ public class ReviewersByOwnership implements Runnable {
                 input.reviewer = accountId.toString();
                 post.apply(changeResource, input);
             }
+            log.info("Adding reviewers to change {}: {}", change, topReviewers);
         } catch (Exception ex) {
             log.error("Couldn't add reviewers to the change", ex);
         }

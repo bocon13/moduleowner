@@ -44,6 +44,7 @@ Gerrit.install(function(self) {
         Gerrit.get(url, function(r) {
             console.log('Module-Owner: ' + r);
             self.moduleOwner = r;
+            // TODO consider replacing with server-side GerritUiExtensionPoint
             addOwnerLabel();
             // TODO the following are now longer needed:
             //disableSubmitButton();

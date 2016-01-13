@@ -32,13 +32,13 @@ public class OwnersTopMenu implements TopMenu {
             menuEntries.add(new MenuEntry(GerritTopMenu.PROJECTS,
                   Collections.singletonList(new MenuItem("Module Owners",
                                  baseUrl + "owners/${projectName}"))));
-
         }
     }
 
     private boolean canSeeMenuEntry() {
         if (userProvider.get().isIdentifiedUser()) {
-            CapabilityControl ctl = userProvider.get().getCapabilities();
+            // TODO we might want to do something more intelligent
+//            CapabilityControl ctl = userProvider.get().getCapabilities();
 //            return ctl.canPerform(pluginName + "-" + MyCapability.ID)
 //                    || ctl.canAdministrateServer();
             return true;
