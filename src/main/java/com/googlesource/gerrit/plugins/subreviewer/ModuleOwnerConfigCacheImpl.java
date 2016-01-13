@@ -77,6 +77,7 @@ public class ModuleOwnerConfigCacheImpl implements ModuleOwnerConfigCache {
 
         @Override
         public void onGitReferenceUpdated(Event event) {
+            //FIXME check that this is working
             if (event.getRefName().equals(RefNames.REFS_CONFIG)) {
                 log.info("Updating module owner config for project: {}",
                          event.getProjectName());

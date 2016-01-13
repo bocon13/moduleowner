@@ -7,7 +7,7 @@ gerrit_plugin(
   manifest_entries = [
     'Gerrit-PluginName: subreviewer',
     'Gerrit-ApiType: plugin',
-    'Gerrit-ApiVersion: 2.11',
+    'Gerrit-ApiVersion: 2.11.5',
     'Gerrit-Module: com.googlesource.gerrit.plugins.subreviewer.Module',
     'Gerrit-HttpModule: com.googlesource.gerrit.plugins.subreviewer.HttpModule',
   ],

@@ -5,17 +5,17 @@ Gerrit.install(function(self) {
             return;
         }
         if (self.moduleOwner == "APPROVED") {
-            var style = Gerrit.css('color: green;');
-            var text = 'You are a module owner';
+            var style = Gerrit.css('color: #060;');
+            var text = 'You are a module owner for this change';
         } else if (self.moduleOwner == "DENIED") {
-            var style = Gerrit.css('color: red;');
-            var text = 'You are not a module owner. Please do not +2 or Submit.';
+            var style = Gerrit.css('color: #d14836;');
+            var text = 'You are not a module owner for this change';
         } else  {
             return;
         }
         var change_plugins = document.getElementById('change_plugins');
         change_plugins.appendChild(
-            Gerrit.html('<hr /><span class="{style}">{text}</span>',
+            Gerrit.html('<span class="{style}">{text}</span>',
                 {style: style, text: text}));
     }
     function disableSubmitButton() {
@@ -40,12 +40,13 @@ Gerrit.install(function(self) {
             + "/"
             + self.getPluginName()
             + "~"
-            + "file-owner";
+            + "module-owner";
         Gerrit.get(url, function(r) {
-            console.log(r);
+            console.log('Module-Owner: ' + r);
             self.moduleOwner = r;
             addOwnerLabel();
-            disableSubmitButton();
+            // TODO the following are now longer needed:
+            //disableSubmitButton();
             //TODO disable +2 if appropriate
         });
     }

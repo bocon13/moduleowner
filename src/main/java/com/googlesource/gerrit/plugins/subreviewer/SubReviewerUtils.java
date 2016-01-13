@@ -1,6 +1,11 @@
 package com.googlesource.gerrit.plugins.subreviewer;
 
 import autovalue.shaded.com.google.common.common.collect.Lists;
+import com.google.gerrit.reviewdb.client.Account;
+import com.google.gerrit.server.account.AccountCache;
+import com.google.gerrit.server.account.AccountResolver;
+import com.google.gerrit.server.data.AccountAttribute;
+import com.google.gwtorm.server.OrmException;
 import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.diff.DiffEntry;
 import org.eclipse.jgit.lib.ObjectReader;
@@ -85,5 +90,23 @@ public class SubReviewerUtils {
             rw.dispose();
         }
         return files;
+    }
+
+    public static Account getAccountFromAttribute(AccountAttribute attribute,
+                                           AccountCache cache,
+                                           AccountResolver resolver) {
+        //FIXME this could be greatly simplified by adding Account.Id to AccountAttribute
+        Account account = cache.getByUsername(attribute.username).getAccount();
+        if (account == null) {
+            try {
+                account = resolver.findByNameOrEmail(attribute.email);
+                if (account == null) {
+                    account = resolver.findByNameOrEmail(attribute.name);
+                }
+            } catch (OrmException e) {
+                log.error("Exception processing user {}", attribute.name, e);
+            }
+        }
+        return account;
     }
 }

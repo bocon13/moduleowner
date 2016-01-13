@@ -6,6 +6,8 @@ import com.google.common.collect.Maps;
 import com.google.common.collect.Ordering;
 import com.google.common.collect.Sets;
 import com.google.gerrit.common.data.GroupDetail;
+import com.google.gerrit.common.data.LabelType;
+import com.google.gerrit.common.data.LabelTypes;
 import com.google.gerrit.common.errors.NoSuchGroupException;
 import com.google.gerrit.reviewdb.client.Account;
 import com.google.gerrit.reviewdb.client.AccountGroup;
@@ -20,6 +22,7 @@ import com.google.gerrit.server.account.GroupCache;
 import com.google.gerrit.server.account.GroupDetailFactory;
 import com.google.gerrit.server.config.PluginConfigFactory;
 import com.google.gerrit.server.project.NoSuchProjectException;
+import com.google.gerrit.server.project.ProjectState;
 import com.google.gwtorm.server.OrmException;
 import com.google.inject.Inject;
 import com.google.inject.assistedinject.Assisted;
@@ -46,6 +49,8 @@ import static com.googlesource.gerrit.plugins.subreviewer.SubReviewerUtils.getFi
 public class ModuleOwnerConfig {
     private static final Logger log = LoggerFactory.getLogger(ModuleOwnerConfig.class);
 
+    public static final String CODE_REVIEW_LABEL = "Code-Review";
+    public static final String MODULE_OWNER_LABEL = "Module-Owner";
     private static final String PLUGIN_NAME = "subreviewer";
     private static final String CONFIG_USER = "user";
     private static final String CONFIG_GROUP = "group";
@@ -102,15 +107,7 @@ public class ModuleOwnerConfig {
         }
 
         for (String username : config.getSubsections(CONFIG_USER)) {
-            Account account = accountCache.getByUsername(username).getAccount();
-            if (account == null) {
-                // Try to resolve account by name or email.
-                try {
-                    account = accountResolver.find(username);
-                } catch (OrmException e) {
-                    log.error("Exception processing user {}", username, e);
-                }
-            }
+            Account account = getAccountFromName(username);
             if (account == null) {
                 log.warn("Could not find account for: {}", username);
                 continue;
@@ -137,6 +134,19 @@ public class ModuleOwnerConfig {
         }
     }
 
+    private Account getAccountFromName(String name) {
+        Account account = accountCache.getByUsername(name).getAccount();
+        if (account == null) {
+            // Try to resolve account by name or email.
+            try {
+                account = accountResolver.find(name);
+            } catch (OrmException e) {
+                log.error("Exception processing user {}", name, e);
+            }
+        }
+        return account;
+    }
+
     private void addPatterns(Key key, List<String> patterns) {
         sortPatterns(patterns);
         idToPatterns.put(key, patterns);
@@ -152,6 +162,17 @@ public class ModuleOwnerConfig {
 
     public int getMaxReviewers() {
         return maxReviewers;
+    }
+
+    public boolean isEnabled() {
+        //FIXME check labels from project
+//        ProjectState projectState = projectCache.get(projectName);
+//        LabelTypes labelTypes = projectState.getLabelTypes();
+//        log.info("labels: {}", labelTypes);
+//        LabelType codeReviewLabel = labelTypes.byLabel(CODE_REVIEW_LABEL); //FIXME
+//        LabelType moduleOwnerLabel = labelTypes.byLabel(MODULE_OWNER_LABEL); //FIXME
+
+        return true;
     }
 
     public boolean isModuleOwner(Account.Id user, Repository repo, RevCommit commit) {
@@ -278,6 +299,40 @@ public class ModuleOwnerConfig {
         }
 
         return patterns;
+    }
+
+    public Map<Account, List<String>> getPatternMap() {
+        Map<Account.Id, List<String>> idMap = Maps.newHashMap();
+        GroupDetailSnapshot groupToUser = new GroupDetailSnapshot();
+
+        for (Map.Entry<Key, List<String>> entry : idToPatterns.entrySet()) {
+            Key key = entry.getKey();
+            if (key.isUser()) {
+                List<String> existingPatterns = idMap.get(key.user);
+                if (existingPatterns == null) {
+                    existingPatterns = Lists.newArrayList(entry.getValue());
+                    idMap.put(key.user, existingPatterns);
+                } else {
+                    existingPatterns.addAll(entry.getValue());
+                }
+            } else {
+                for (Account.Id user : groupToUser.getUsers(key.group)) {
+                    List<String> existingPatterns = idMap.get(user);
+                    if (existingPatterns == null) {
+                        existingPatterns = Lists.newArrayList(entry.getValue());
+                        idMap.put(user, existingPatterns);
+                    } else {
+                        existingPatterns.addAll(entry.getValue());
+                    }
+                }
+            }
+        }
+
+        Map<Account, List<String>> userMap = Maps.newHashMapWithExpectedSize(idMap.size());
+        for (Map.Entry<Account.Id, List<String>> entry : idMap.entrySet()) {
+            userMap.put(accountCache.get(entry.getKey()).getAccount(), entry.getValue());
+        }
+        return userMap;
     }
 
     /**

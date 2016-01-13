@@ -24,8 +24,8 @@ import java.io.IOException;
  * REST endpoint for client script to determine whether the current user is a
  * module owner.
  */
-public class FileOwner implements RestReadView<RevisionResource> {
-    private static final Logger log = LoggerFactory.getLogger(FileOwner.class);
+public class GetModuleOwner implements RestReadView<RevisionResource> {
+    private static final Logger log = LoggerFactory.getLogger(GetModuleOwner.class);
 
     private final GitRepositoryManager gitManager;
     private final Provider<CurrentUser> currentUserProvider;
@@ -33,10 +33,10 @@ public class FileOwner implements RestReadView<RevisionResource> {
     private final ModuleOwnerConfigCache configCache;
 
     @Inject
-    FileOwner(Provider<CurrentUser> currentUserProvider,
-              GitRepositoryManager gitManager,
-              PatchListCache patchListCache,
-              ModuleOwnerConfigCache configCache) {
+    GetModuleOwner(Provider<CurrentUser> currentUserProvider,
+                   GitRepositoryManager gitManager,
+                   PatchListCache patchListCache,
+                   ModuleOwnerConfigCache configCache) {
         this.currentUserProvider = currentUserProvider;
         this.gitManager = gitManager;
         this.patchListCache = patchListCache;

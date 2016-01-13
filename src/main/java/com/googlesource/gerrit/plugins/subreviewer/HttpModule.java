@@ -10,5 +10,7 @@ class HttpModule extends ServletModule {
   protected void configureServlets() {
       DynamicSet.bind(binder(), WebUiPlugin.class)
               .toInstance(new JavaScriptPlugin("subreviewer.js"));
+      serve("/owners/*").with(ModuleOwnersServlet.class);
+
   }
 }
