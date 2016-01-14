@@ -69,15 +69,12 @@ public class MergeUserValidator implements MergeValidationListener {
         IdentifiedUser submitter =
                 identifiedUserFactory.create(psa.getAccountId());
 
-        ModuleOwnerConfig config = configFactory.get(
-                destProject.getProject().getNameKey());
-        if (config == null) {
+        ModuleOwnerConfig config = configFactory.get(destProject.getProject().getNameKey());
+        if (config != null && config.isEnabled() &&
+                !config.isModuleOwner(submitter.getAccountId(), repo, commit)) {
             throw new MergeValidationException(DENY_STATUS);
         }
 
-        if (!config.isModuleOwner(submitter.getAccountId(), repo, commit)) {
-            throw new MergeValidationException(DENY_STATUS);
-        }
         log.info("user {} submitted commit {}/{}",
                  submitter.getUserName(),
                  destProject.getProject().getNameKey(),

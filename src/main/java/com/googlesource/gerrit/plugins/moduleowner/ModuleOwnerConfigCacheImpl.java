@@ -77,7 +77,6 @@ public class ModuleOwnerConfigCacheImpl implements ModuleOwnerConfigCache {
 
         @Override
         public void onGitReferenceUpdated(Event event) {
-            //FIXME check that this is working
             if (event.getRefName().equals(RefNames.REFS_CONFIG)) {
                 Project.NameKey project = new Project.NameKey(event.getProjectName());
                 // TODO check to see if there are changes before evicting config
