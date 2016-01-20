@@ -104,7 +104,7 @@ public class ModuleOwnerConfig {
         allPatterns = Lists.newArrayList(patternToId.keySet());
         sortPatterns(allPatterns);
 
-        maxReviewers = 3;
+        maxReviewers = 2; // TODO make this configurable
         enabled = checkEnabled();
     }
 
