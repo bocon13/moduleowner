@@ -202,13 +202,13 @@ public class ModuleOwnerConfig {
         return result;
     }
 
-    public Set<Account.Id> getModuleOwners(Repository repo, RevCommit commit,
+    public List<Account.Id> getModuleOwners(Repository repo, RevCommit commit,
                                            Change change) {
         List<String> files = getFilesInCommit(repo, commit);
 
         Map<Account.Id, Match> matchMap = getReviewersMap(files);
         filterMatches(matchMap, change);
-        return findTopReviewers(matchMap);
+        return findTopReviewers(matchMap, this.maxReviewers);
     }
 
     private Map<Account.Id, Match> getReviewersMap(List<String> files) {
@@ -268,27 +268,54 @@ public class ModuleOwnerConfig {
         }
     }
 
-    private Set<Account.Id> findTopReviewers(final Map<Account.Id, Match> reviewers) {
-        Set<Account.Id> topReviewers = Sets.newHashSet();
-
-        List<Map.Entry<Account.Id, Match>> entries =
-                Ordering.from(new Comparator<Map.Entry<Account.Id, Match>>() {
-                    @Override
-                    public int compare(Map.Entry<Account.Id, Match> o1, Map.Entry<Account.Id, Match> o2) {
-                        Match m1 = o1.getValue();
-                        Match m2 = o2.getValue();
-                        // reverse sort (high to low)
-                        if (m1.fileCount == m2.fileCount) {
-                            return m2.sumPatternLength - m1.sumPatternLength;
-                        }
-                        return m2.fileCount - m1.fileCount;
-                    }
-                }).greatestOf(reviewers.entrySet(), this.maxReviewers);
-
-        for (Map.Entry<Account.Id, Match> entry : entries) {
-            topReviewers.add(entry.getKey());
+    private static final Comparator<Map.Entry<Account.Id, Match>> MATCH_COMPARE =
+            new Comparator<Map.Entry<Account.Id, Match>>() {
+        @Override
+        public int compare(Map.Entry<Account.Id, Match> o1, Map.Entry<Account.Id, Match> o2) {
+            Match m1 = o1.getValue();
+            Match m2 = o2.getValue();
+            // reverse sort (high to low)
+            if (m1.fileCount == m2.fileCount) {
+                return m2.sumPatternLength - m1.sumPatternLength;
+            }
+            return m2.fileCount - m1.fileCount;
         }
-        return topReviewers;
+    };
+
+    private List<Account.Id> findTopReviewers(final Map<Account.Id, Match> reviewers, int max) {
+        List<Map.Entry<Account.Id, Match>> entries =
+                Ordering.from(MATCH_COMPARE).sortedCopy(reviewers.entrySet());
+
+        if (entries.size() == 0) {
+            return Collections.emptyList();
+        }
+        List<Account.Id> sortedReviewers = Lists.newArrayList();
+
+        // randomize equivalent entries
+        Map.Entry<Account.Id, Match> prev = entries.get(0);
+        int start = 0;
+        for (int i = 1; i < entries.size(); i++) {
+            Map.Entry<Account.Id, Match> curr = entries.get(i);
+            if (MATCH_COMPARE.compare(prev, curr) != 0) {
+                shuffleAndAdd(entries.subList(start, i), sortedReviewers);
+                start = i;
+            }
+            prev = curr;
+        }
+        shuffleAndAdd(entries.subList(start, entries.size()), sortedReviewers);
+
+        return sortedReviewers.subList(0, max <= sortedReviewers.size() ? max : sortedReviewers.size());
+    }
+
+    private void shuffleAndAdd(List<Map.Entry<Account.Id, Match>> subList, List<Account.Id> destList) {
+        if (subList.size() == 1) {
+            destList.add(subList.get(0).getKey());
+        } else {
+            Collections.shuffle(subList);
+            for (Map.Entry<Account.Id, Match> e : subList) {
+                destList.add(e.getKey());
+            }
+        }
     }
 
     private List<String> getEffectivePathPatternsForUser(Account.Id user) {

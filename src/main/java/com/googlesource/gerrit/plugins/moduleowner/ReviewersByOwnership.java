@@ -15,7 +15,7 @@ import org.eclipse.jgit.revwalk.RevCommit;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.Set;
+import java.util.List;
 
 /**
  * Computes the Module Owners for a patch set and assigns them as reviewers.
@@ -62,7 +62,7 @@ public class ReviewersByOwnership implements Runnable {
         if (config == null) {
             return;
         }
-        Set<Account.Id> reviewers = config.getModuleOwners(repo, commit, change);
+        List<Account.Id> reviewers = config.getModuleOwners(repo, commit, change);
         addReviewers(reviewers, change);
     }
 
@@ -72,7 +72,7 @@ public class ReviewersByOwnership implements Runnable {
      * @param topReviewers Set of reviewers proposed
      * @param change {@link Change} to add the reviewers to
      */
-    private void addReviewers(Set<Account.Id> topReviewers, Change change) {
+    private void addReviewers(List<Account.Id> topReviewers, Change change) {
         try {
             ChangeResource changeResource = changes.parse(change.getId());
             PostReviewers post = reviewersProvider.get();

@@ -101,8 +101,11 @@ class ChangeEventListener implements EventListener {
         //FIXME skip changes on refs/meta/config
 
         if (event instanceof PatchSetCreatedEvent) {
+            // TODO filter drafts
             // New patch set available, automatically add module owners as reviewers
             addReviewers((PatchSetCreatedEvent) event);
+            // TODO update labels
+            // TODO add DraftPublished listener
         } else if (event instanceof CommentAddedEvent) {
             // New review available, add owner label if appropriate
             updateLabels((CommentAddedEvent) event);
