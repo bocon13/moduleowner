@@ -156,6 +156,11 @@ class ChangeEventListener implements EventListener {
         }
 
         Account account = getAccountFromAttribute(event.author, accountCache, accountResolver);
+        if (account == null && event.author != null) {
+            log.warn("Could not find account for user: {} ({})",
+                     event.author.name, event.author.email);
+            return;
+        }
 
         try (Repository repo = repoManager.openRepository(projectName);
              ReviewDb reviewDb = schemaFactory.open()) {

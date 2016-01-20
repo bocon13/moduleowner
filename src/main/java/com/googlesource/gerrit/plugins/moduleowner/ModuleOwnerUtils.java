@@ -96,11 +96,16 @@ public class ModuleOwnerUtils {
                                                   AccountCache cache,
                                                   AccountResolver resolver) {
         //TODO this could be greatly simplified by adding Account.Id to AccountAttribute
-        Account account = cache.getByUsername(attribute.username).getAccount();
+        Account account = null;
+        if (attribute.username != null) {
+            account = cache.getByUsername(attribute.username).getAccount();
+        }
         if (account == null) {
             try {
-                account = resolver.findByNameOrEmail(attribute.email);
-                if (account == null) {
+                if (attribute.email != null) {
+                    account = resolver.findByNameOrEmail(attribute.email);
+                }
+                if (account == null && attribute.name != null) {
                     account = resolver.findByNameOrEmail(attribute.name);
                 }
             } catch (OrmException e) {
