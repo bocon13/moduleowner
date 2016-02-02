@@ -80,7 +80,7 @@ class ModuleOwnersServlet extends HttpServlet {
             sb.append(entry.getKey().getFullName());
             sb.append("</h3>");
             sb.append("<ul>");
-            for (String pattern : entry.getValue()) {
+            for (String pattern : Ordering.natural().immutableSortedCopy(entry.getValue())) {
                 sb.append("<li>");
                 sb.append(pattern);
                 sb.append("</li>");
