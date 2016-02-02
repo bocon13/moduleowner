@@ -1,5 +1,6 @@
 package com.googlesource.gerrit.plugins.moduleowner;
 
+import com.google.common.collect.Maps;
 import com.google.common.util.concurrent.CheckedFuture;
 import com.google.gerrit.common.EventListener;
 import com.google.gerrit.common.TimeUtil;
@@ -43,7 +44,7 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.util.Collections;
 import java.util.List;
-import java.util.Objects;
+import java.util.Map;
 
 import static com.googlesource.gerrit.plugins.moduleowner.ModuleOwnerConfig.CODE_REVIEW_LABEL;
 import static com.googlesource.gerrit.plugins.moduleowner.ModuleOwnerConfig.MODULE_OWNER_LABEL;
@@ -214,8 +215,7 @@ class ChangeEventListener implements EventListener {
 
         List<PatchSetApproval> existingApprovals =
                 reviewDb.patchSetApprovals().byChange(change.getId()).toList();
-        PatchSetApproval existingCodeReviewApproval = null;
-        PatchSetApproval existingModuleOwnerApproval = null;
+        Map<String, PatchSetApproval> approvalsForCurrentUser = Maps.newHashMap();
         for (PatchSetApproval approval : existingApprovals) {
             if (approval.isSubmit()) {
                 continue;
@@ -227,13 +227,13 @@ class ChangeEventListener implements EventListener {
                 // old approval
                 continue;
             }
-            if (Objects.equals(approval.getLabel(), codeReviewLabel.getName())) {
-                existingCodeReviewApproval = approval;
-            } else if (Objects.equals(approval.getLabel(), moduleOwnerLabel.getName())) {
-                existingModuleOwnerApproval = approval;
-            }
+            approvalsForCurrentUser.put(approval.getLabel(), approval);
         }
 
+        PatchSetApproval existingModuleOwnerApproval =
+                approvalsForCurrentUser.get(moduleOwnerLabel.getName());
+        PatchSetApproval existingCodeReviewApproval =
+                approvalsForCurrentUser.get(codeReviewLabel.getName());
         if (config.isModuleOwner(user.getId(), repo, commit)) {
             if (existingCodeReviewApproval != null && existingModuleOwnerApproval != null) {
                 if (existingCodeReviewApproval.getValue() != existingModuleOwnerApproval.getValue()) {
@@ -264,8 +264,24 @@ class ChangeEventListener implements EventListener {
             } // else, nothing to be done
         } else if (existingModuleOwnerApproval != null) {
             // Delete module owner approval (not a module owner)
+            log.info("REMOVING approval for non-module owner: {}", existingModuleOwnerApproval);
             updatePatchSetApproval(reviewDb, change.getId(),
                                    existingModuleOwnerApproval, ChangeType.DELETE);
+            // Verify that at least one approval exists, otherwise inject CR +0
+            approvalsForCurrentUser.remove(moduleOwnerLabel.getName());
+            if (approvalsForCurrentUser.size() == 0) {
+                PatchSetApproval codeReviewApproval = new PatchSetApproval(
+                        new PatchSetApproval.Key(
+                                existingModuleOwnerApproval.getPatchSetId(),
+                                existingModuleOwnerApproval.getAccountId(),
+                                codeReviewLabel.getLabelId()),
+                        (short) 0,
+                        TimeUtil.nowTs());
+                log.info("INSERTING approval for non-module owner because last approval was removed: {}",
+                         codeReviewApproval);
+                updatePatchSetApproval(reviewDb, change.getId(),
+                                       codeReviewApproval, ChangeType.INSERT);
+            }
         } // else, not module owner and no existing approval; nothing to do
     }
 
