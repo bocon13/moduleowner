@@ -208,7 +208,7 @@ public class ModuleOwnerConfig {
 
         Map<Account.Id, Match> matchMap = getReviewersMap(files);
         filterMatches(matchMap, change);
-        return findTopReviewers(matchMap, this.maxReviewers);
+        return sortReviewersByRelevance(matchMap, this.maxReviewers);
     }
 
     private Map<Account.Id, Match> getReviewersMap(List<String> files) {
@@ -282,7 +282,7 @@ public class ModuleOwnerConfig {
         }
     };
 
-    private List<Account.Id> findTopReviewers(final Map<Account.Id, Match> reviewers, int max) {
+    private List<Account.Id> sortReviewersByRelevance(final Map<Account.Id, Match> reviewers, int max) {
         List<Map.Entry<Account.Id, Match>> entries =
                 Ordering.from(MATCH_COMPARE).sortedCopy(reviewers.entrySet());
 
@@ -304,7 +304,7 @@ public class ModuleOwnerConfig {
         }
         shuffleAndAdd(entries.subList(start, entries.size()), sortedReviewers);
 
-        return sortedReviewers.subList(0, max <= sortedReviewers.size() ? max : sortedReviewers.size());
+        return sortedReviewers;
     }
 
     private void shuffleAndAdd(List<Map.Entry<Account.Id, Match>> subList, List<Account.Id> destList) {

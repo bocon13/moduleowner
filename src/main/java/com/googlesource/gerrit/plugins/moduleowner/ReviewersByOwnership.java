@@ -1,5 +1,6 @@
 package com.googlesource.gerrit.plugins.moduleowner;
 
+import com.google.common.collect.Multimap;
 import com.google.gerrit.extensions.api.changes.AddReviewerInput;
 import com.google.gerrit.reviewdb.client.Account;
 import com.google.gerrit.reviewdb.client.Change;
@@ -7,6 +8,7 @@ import com.google.gerrit.reviewdb.client.Project;
 import com.google.gerrit.server.change.ChangeResource;
 import com.google.gerrit.server.change.ChangesCollection;
 import com.google.gerrit.server.change.PostReviewers;
+import com.google.gerrit.server.notedb.ReviewerState;
 import com.google.inject.Inject;
 import com.google.inject.Provider;
 import com.google.inject.assistedinject.Assisted;
@@ -16,6 +18,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * Computes the Module Owners for a patch set and assigns them as reviewers.
@@ -62,26 +65,55 @@ public class ReviewersByOwnership implements Runnable {
         if (config == null) {
             return;
         }
-        List<Account.Id> reviewers = config.getModuleOwners(repo, commit, change);
-        addReviewers(reviewers, change);
+        List<Account.Id> moduleOwners = config.getModuleOwners(repo, commit, change);
+        addReviewers(change, moduleOwners, config.getMaxReviewers());
     }
 
     /**
      * Append the reviewers to change#{@link Change}
      *
-     * @param topReviewers Set of reviewers proposed
      * @param change {@link Change} to add the reviewers to
+     * @param moduleOwners List of module owners, sorted by relevance
+     * @param numReviewers number of module owners to assign as reviewers
      */
-    private void addReviewers(List<Account.Id> topReviewers, Change change) {
+    private void addReviewers(Change change, List<Account.Id> moduleOwners, int numReviewers) {
         try {
             ChangeResource changeResource = changes.parse(change.getId());
+            Multimap<ReviewerState, Account.Id> existingReviewers = changeResource.getNotes().getReviewers();
+
+            // scan existing reviewers for module owners
+            for (Map.Entry<ReviewerState, Account.Id> entry : existingReviewers.entries()) {
+                Account.Id reviewer = entry.getValue();
+                if (moduleOwners.contains(reviewer)) {
+                    switch (entry.getKey()) {
+                        case REVIEWER:
+                        case CC:
+                            numReviewers--;
+                            break;
+                        case REMOVED:
+                        default:
+                            // don't count removed reviewers, but still remove them
+                            break;
+                    }
+                    moduleOwners.remove(reviewer);
+                }
+                if (numReviewers <= 0) {
+                    return;
+                }
+            }
+
+            // select remaining module owners to be reviewers by relevance
+            moduleOwners = moduleOwners.subList(0, numReviewers <= moduleOwners.size() ?
+                                                    numReviewers : moduleOwners.size());
+
+            // add module owners as reviewers
             PostReviewers post = reviewersProvider.get();
-            for (Account.Id accountId : topReviewers) {
+            for (Account.Id accountId : moduleOwners) {
                 AddReviewerInput input = new AddReviewerInput();
                 input.reviewer = accountId.toString();
                 post.apply(changeResource, input);
             }
-            log.info("Adding reviewers to change {}: {}", change, topReviewers);
+            log.info("Adding reviewers to change {}: {}", change, moduleOwners);
         } catch (Exception ex) {
             log.error("Couldn't add reviewers to the change", ex);
         }
