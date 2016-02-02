@@ -193,7 +193,7 @@ class ChangeEventListener implements EventListener {
             syncModuleOwnerLabel(projectName, account, change, psId, commit,
                                  config, reviewDb, repo);
         } catch (OrmException | IOException e) {
-            log.error("Exception while updating lables for change: {} in project: {}",
+            log.error("Exception while updating labels for change: {} in project: {}",
                       event.change.id, event.getProjectNameKey().get(), e);
         }
     }

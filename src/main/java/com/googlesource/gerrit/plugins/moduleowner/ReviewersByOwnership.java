@@ -1,14 +1,16 @@
 package com.googlesource.gerrit.plugins.moduleowner;
 
-import com.google.common.collect.Multimap;
 import com.google.gerrit.extensions.api.changes.AddReviewerInput;
 import com.google.gerrit.reviewdb.client.Account;
 import com.google.gerrit.reviewdb.client.Change;
+import com.google.gerrit.reviewdb.client.PatchSetApproval;
 import com.google.gerrit.reviewdb.client.Project;
+import com.google.gerrit.reviewdb.server.ReviewDb;
 import com.google.gerrit.server.change.ChangeResource;
 import com.google.gerrit.server.change.ChangesCollection;
 import com.google.gerrit.server.change.PostReviewers;
-import com.google.gerrit.server.notedb.ReviewerState;
+import com.google.gwtorm.server.OrmException;
+import com.google.gwtorm.server.SchemaFactory;
 import com.google.inject.Inject;
 import com.google.inject.Provider;
 import com.google.inject.assistedinject.Assisted;
@@ -18,7 +20,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.List;
-import java.util.Map;
 
 /**
  * Computes the Module Owners for a patch set and assigns them as reviewers.
@@ -34,7 +35,9 @@ public class ReviewersByOwnership implements Runnable {
 
     private final Provider<PostReviewers> reviewersProvider;
     private final ChangesCollection changes;
+    private final SchemaFactory<ReviewDb> schemaFactory;
     private final ModuleOwnerConfigCache configCache;
+
 
     public interface Factory {
         ReviewersByOwnership create(Project.NameKey projectName, RevCommit commit,
@@ -44,6 +47,7 @@ public class ReviewersByOwnership implements Runnable {
     @Inject
     public ReviewersByOwnership(final ChangesCollection changes,
                                 final Provider<PostReviewers> reviewersProvider,
+                                final SchemaFactory<ReviewDb> schemaFactory,
                                 final ModuleOwnerConfigCache configCache,
                                 @Assisted final Project.NameKey projectName,
                                 @Assisted final RevCommit commit,
@@ -51,6 +55,7 @@ public class ReviewersByOwnership implements Runnable {
                                 @Assisted final Repository repo) {
         this.changes = changes;
         this.reviewersProvider = reviewersProvider;
+        this.schemaFactory = schemaFactory;
         this.configCache = configCache;
 
         this.projectName = projectName;
@@ -79,27 +84,50 @@ public class ReviewersByOwnership implements Runnable {
     private void addReviewers(Change change, List<Account.Id> moduleOwners, int numReviewers) {
         try {
             ChangeResource changeResource = changes.parse(change.getId());
-            Multimap<ReviewerState, Account.Id> existingReviewers = changeResource.getNotes().getReviewers();
 
             // scan existing reviewers for module owners
-            for (Map.Entry<ReviewerState, Account.Id> entry : existingReviewers.entries()) {
-                Account.Id reviewer = entry.getValue();
-                if (moduleOwners.contains(reviewer)) {
-                    switch (entry.getKey()) {
-                        case REVIEWER:
-                        case CC:
-                            numReviewers--;
-                            break;
-                        case REMOVED:
-                        default:
-                            // don't count removed reviewers, but still remove them
-                            break;
+            /* FIXME notes does not appear to contain any reviewers
+            Multimap<ReviewerState, Account.Id> existingReviewers = changeResource.getNotes().getReviewers();
+            if (existingReviewers != null) {
+                for (Map.Entry<ReviewerState, Account.Id> entry : existingReviewers.entries()) {
+                    Account.Id reviewer = entry.getValue();
+                    if (moduleOwners.contains(reviewer)) {
+                        switch (entry.getKey()) {
+                            case REVIEWER:
+                            case CC:
+                                numReviewers--;
+                                break;
+                            case REMOVED:
+                            default:
+                                // don't count removed reviewers, but still remove them
+                                break;
+                        }
+                        moduleOwners.remove(reviewer);
                     }
-                    moduleOwners.remove(reviewer);
+                    if (numReviewers <= 0) {
+                        return;
+                    }
                 }
-                if (numReviewers <= 0) {
-                    return;
+            } ... alternate implementation follows: */
+            try (ReviewDb reviewDb = schemaFactory.open()) {
+                List<PatchSetApproval> existingApprovals =
+                        reviewDb.patchSetApprovals().byChange(change.getId()).toList();
+                for (PatchSetApproval approval : existingApprovals) {
+                    Account.Id reviewer = approval.getAccountId();
+                    if (moduleOwners.contains(reviewer)) {
+                        numReviewers--;
+                        moduleOwners.remove(reviewer);
+                    }
+                    if (numReviewers <= 0) {
+                        // TODO lower log level or clean up
+                        log.info("Already enough module owners assigned to change: {} in project: {}",
+                                 change.getId(), change.getProject().get());
+                        return;
+                    }
                 }
+            } catch (OrmException e) {
+                log.error("Exception while reading reviewers for change: {} in project: {}",
+                          change.getId(), change.getProject().get(), e);
             }
 
             // select remaining module owners to be reviewers by relevance
