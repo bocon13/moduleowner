@@ -16,8 +16,10 @@ import com.google.gerrit.server.IdentifiedUser;
 import com.google.gerrit.server.account.AccountCache;
 import com.google.gerrit.server.account.AccountResolver;
 import com.google.gerrit.server.events.CommentAddedEvent;
+import com.google.gerrit.server.events.DraftPublishedEvent;
 import com.google.gerrit.server.events.Event;
 import com.google.gerrit.server.events.PatchSetCreatedEvent;
+import com.google.gerrit.server.events.PatchSetEvent;
 import com.google.gerrit.server.git.GitRepositoryManager;
 import com.google.gerrit.server.git.WorkQueue;
 import com.google.gerrit.server.index.ChangeIndexer;
@@ -101,11 +103,17 @@ class ChangeEventListener implements EventListener {
         //FIXME skip changes on refs/meta/config
 
         if (event instanceof PatchSetCreatedEvent) {
-            // TODO filter drafts
             // New patch set available, automatically add module owners as reviewers
-            addReviewers((PatchSetCreatedEvent) event);
+            PatchSetCreatedEvent psEvent = (PatchSetCreatedEvent) event;
+
+            // Don't assign reviewers to drafts
+            if (!psEvent.patchSet.isDraft) {
+                addReviewers(psEvent);
+            }
+
             // TODO update labels
-            // TODO add DraftPublished listener
+        } else if (event instanceof DraftPublishedEvent) {
+            addReviewers((PatchSetEvent) event);
         } else if (event instanceof CommentAddedEvent) {
             // New review available, add owner label if appropriate
             updateLabels((CommentAddedEvent) event);
@@ -113,7 +121,7 @@ class ChangeEventListener implements EventListener {
         // else, dropping event
     }
 
-    void addReviewers(final PatchSetCreatedEvent event) {
+    void addReviewers(final PatchSetEvent event) {
         ModuleOwnerConfig config = moduleOwnerConfigCache.get(event.getProjectNameKey());
         if (config == null || !config.isEnabled() || config.getMaxReviewers() <= 0) {
             return;
