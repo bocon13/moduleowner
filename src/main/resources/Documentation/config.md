@@ -41,3 +41,26 @@ add_module_owner_approval(S1, S2) :-
     S2 = [label('Module-Owner', ok(U)) | S1].
 add_module_owner_approval(S1, [label('Module-Owner', need(_)) | S1]).
 ```
+
+One-time Setup
+--------------
+```
+mkdir onos-cfg
+cd onos-cfg/
+git init
+git remote add origin ssh://gerrit.onosproject.org:29418/onos.git
+git review -s -r origin
+```
+
+Adding/updating a module owner
+------------------------------
+```
+git pull origin refs/meta/config
+vi moduleowner.config
+git commit -a -m"Adding/amending module owner"
+git push origin HEAD:refs/for/refs/meta/config
+```
+
+If you are adding a new module owner, you will also need to add them to a group with the appropriate permissions.
+Also, Gerrit seems to used cached group membership when displaying review options, so new reviewers may need to 
+push a +0 review to force a cache refresh (or they can wait).
