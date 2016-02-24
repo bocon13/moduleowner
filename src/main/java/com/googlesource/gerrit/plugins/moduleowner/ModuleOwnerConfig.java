@@ -152,7 +152,8 @@ public class ModuleOwnerConfig {
     }
 
     private Account getAccountFromName(String name) {
-        Account account = accountCache.getByUsername(name).getAccount();
+        Account account = accountCache.getByUsername(name) == null ? 
+                null : accountCache.getByUsername(name).getAccount();
         if (account == null) {
             // Try to resolve account by name or email.
             try {
