@@ -258,8 +258,11 @@ class ChangeEventListener implements EventListener {
 
             } else if (existingModuleOwnerApproval != null) {
                 // Delete module owner approval (no matching code review approval)
-                updatePatchSetApproval(reviewDb, change.getId(),
-                                       existingModuleOwnerApproval, ChangeType.DELETE);
+                // FIXME commenting out for issue #15, needs a better solution long term
+//                updatePatchSetApproval(reviewDb, change.getId(),
+//                                       existingModuleOwnerApproval, ChangeType.DELETE);
+                log.info("Not removing approval for module owner for change {}: {}",
+                         change.getId(), existingModuleOwnerApproval);
 
             } // else, nothing to be done
         } else if (existingModuleOwnerApproval != null) {
