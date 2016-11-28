@@ -5,7 +5,7 @@ import com.google.gerrit.extensions.events.UsageDataPublishedListener;
 import com.google.gerrit.extensions.registration.DynamicSet;
 import com.google.gerrit.extensions.restapi.RestApiModule;
 import com.google.gerrit.extensions.webui.TopMenu;
-import com.google.gerrit.server.config.FactoryModule;
+import com.google.gerrit.extensions.config.FactoryModule;
 import com.google.gerrit.server.git.validators.MergeValidationListener;
 
 import static com.google.gerrit.server.change.RevisionResource.REVISION_KIND;

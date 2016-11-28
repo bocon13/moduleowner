@@ -1,7 +1,8 @@
 package com.googlesource.gerrit.plugins.moduleowner;
 
-import autovalue.shaded.com.google.common.common.collect.Lists;
+import com.google.common.collect.Lists;
 import com.google.gerrit.reviewdb.client.Account;
+import com.google.gerrit.reviewdb.server.ReviewDb;
 import com.google.gerrit.server.account.AccountCache;
 import com.google.gerrit.server.account.AccountResolver;
 import com.google.gerrit.server.data.AccountAttribute;
@@ -92,7 +93,8 @@ public class ModuleOwnerUtils {
         return files;
     }
 
-    public static Account getAccountFromAttribute(AccountAttribute attribute,
+    public static Account getAccountFromAttribute(ReviewDb reviewDb,
+                                                  AccountAttribute attribute,
                                                   AccountCache cache,
                                                   AccountResolver resolver) {
         //TODO this could be greatly simplified by adding Account.Id to AccountAttribute
@@ -103,10 +105,10 @@ public class ModuleOwnerUtils {
         if (account == null) {
             try {
                 if (attribute.email != null) {
-                    account = resolver.findByNameOrEmail(attribute.email);
+                    account = resolver.findByNameOrEmail(reviewDb, attribute.email);
                 }
                 if (account == null && attribute.name != null) {
-                    account = resolver.findByNameOrEmail(attribute.name);
+                    account = resolver.findByNameOrEmail(reviewDb, attribute.name);
                 }
             } catch (OrmException e) {
                 log.error("Exception processing user {}", attribute.name, e);

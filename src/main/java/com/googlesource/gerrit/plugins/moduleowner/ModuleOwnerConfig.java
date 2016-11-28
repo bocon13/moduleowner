@@ -157,7 +157,7 @@ public class ModuleOwnerConfig {
         if (account == null) {
             // Try to resolve account by name or email.
             try {
-                account = accountResolver.find(name);
+                account = accountResolver.find(schemaFactory.open(), name);
             } catch (OrmException e) {
                 log.error("Exception processing user {}", name, e);
             }

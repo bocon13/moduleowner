@@ -23,7 +23,7 @@ import com.google.gerrit.server.events.PatchSetCreatedEvent;
 import com.google.gerrit.server.events.PatchSetEvent;
 import com.google.gerrit.server.git.GitRepositoryManager;
 import com.google.gerrit.server.git.WorkQueue;
-import com.google.gerrit.server.index.ChangeIndexer;
+import com.google.gerrit.server.index.change.ChangeIndexer;
 import com.google.gerrit.server.project.ProjectCache;
 import com.google.gerrit.server.project.ProjectState;
 import com.google.gerrit.server.util.RequestContext;
@@ -108,7 +108,7 @@ class ChangeEventListener implements EventListener {
             PatchSetCreatedEvent psEvent = (PatchSetCreatedEvent) event;
 
             // Don't assign reviewers to drafts
-            if (!psEvent.patchSet.isDraft) {
+            if (!psEvent.patchSet.get().isDraft) {
                 addReviewers(psEvent);
             }
 
@@ -133,7 +133,7 @@ class ChangeEventListener implements EventListener {
              ReviewDb reviewDb = schemaFactory.open()) {
 
 
-            Change.Id changeId = new Change.Id(Integer.parseInt(event.change.number));
+            Change.Id changeId = new Change.Id(Integer.parseInt(event.change.get().number));
             final Change change = reviewDb.changes().get(changeId);
             if (change == null) {
                 log.warn("Change {} not found.", changeId.get());
@@ -142,7 +142,7 @@ class ChangeEventListener implements EventListener {
 
             final RevWalk rw = new RevWalk(repo);
             final RevCommit commit =
-                    rw.parseCommit(ObjectId.fromString(event.patchSet.revision));
+                    rw.parseCommit(ObjectId.fromString(event.patchSet.get().revision));
 
             //TODO consider moving to RequestScopePropagator
             runTaskOnWorkQueue(reviewersFactory.create(projectName, commit, change, repo),
@@ -164,23 +164,28 @@ class ChangeEventListener implements EventListener {
             return;
         }
 
-        Account account = getAccountFromAttribute(event.author, accountCache, accountResolver);
+        Account account = null;
+        try {
+            account = getAccountFromAttribute(schemaFactory.open(), event.author.get(), accountCache, accountResolver);
+        } catch (OrmException e) {
+            log.error("Could not load account", e);
+        }
         if (account == null && event.author != null) {
             log.warn("Could not find account for user: {} ({})",
-                     event.author.name, event.author.email);
+                     event.author.get().name, event.author.get().email);
             return;
         }
 
         try (Repository repo = repoManager.openRepository(projectName);
              ReviewDb reviewDb = schemaFactory.open()) {
-            Change.Id changeId = new Change.Id(Integer.parseInt(event.change.number));
+            Change.Id changeId = new Change.Id(Integer.parseInt(event.change.get().number));
             final Change change = reviewDb.changes().get(changeId);
             if (change == null) {
                 log.warn("Change {} not found.", changeId.get());
                 return;
             }
 
-            PatchSet.Id psId = new PatchSet.Id(changeId, Integer.parseInt(event.patchSet.number));
+            PatchSet.Id psId = new PatchSet.Id(changeId, Integer.parseInt(event.patchSet.get().number));
             PatchSet patchSet = reviewDb.patchSets().get(psId);
             if (patchSet == null) {
                 log.warn("Patch set " + psId.get() + " not found.");
@@ -189,13 +194,13 @@ class ChangeEventListener implements EventListener {
 
             final RevWalk rw = new RevWalk(repo);
             final RevCommit commit =
-                    rw.parseCommit(ObjectId.fromString(event.patchSet.revision));
+                    rw.parseCommit(ObjectId.fromString(event.patchSet.get().revision));
 
             syncModuleOwnerLabel(projectName, account, change, psId, commit,
                                  config, reviewDb, repo);
         } catch (OrmException | IOException e) {
             log.error("Exception while updating labels for change: {} in project: {}",
-                      event.change.id, event.getProjectNameKey().get(), e);
+                      event.change.get().id, event.getProjectNameKey().get(), e);
         }
     }
 
@@ -217,7 +222,8 @@ class ChangeEventListener implements EventListener {
                 reviewDb.patchSetApprovals().byChange(change.getId()).toList();
         Map<String, PatchSetApproval> approvalsForCurrentUser = Maps.newHashMap();
         for (PatchSetApproval approval : existingApprovals) {
-            if (approval.isSubmit()) {
+            //FIXME is this right?
+            if (approval.isLegacySubmit()) {
                 continue;
             }
             if (!approval.getAccountId().equals(user.getId())) {
@@ -240,7 +246,7 @@ class ChangeEventListener implements EventListener {
                     // Update module owner approval
                     existingModuleOwnerApproval.setValue(existingCodeReviewApproval.getValue());
                     existingModuleOwnerApproval.setGranted(TimeUtil.nowTs());
-                    updatePatchSetApproval(reviewDb, change.getId(),
+                    updatePatchSetApproval(reviewDb, projectName, change.getId(),
                                            existingModuleOwnerApproval, ChangeType.UPDATE);
 
                 } // else, nothing to be done; module owner approval is up to date
@@ -253,7 +259,7 @@ class ChangeEventListener implements EventListener {
                                 moduleOwnerLabel.getLabelId()),
                         existingCodeReviewApproval.getValue(),
                         TimeUtil.nowTs());
-                updatePatchSetApproval(reviewDb, change.getId(),
+                updatePatchSetApproval(reviewDb, projectName, change.getId(),
                                        moduleOwnerApproval, ChangeType.INSERT);
 
             } else if (existingModuleOwnerApproval != null) {
@@ -268,7 +274,7 @@ class ChangeEventListener implements EventListener {
         } else if (existingModuleOwnerApproval != null) {
             // Delete module owner approval (not a module owner)
             log.info("REMOVING approval for non-module owner: {}", existingModuleOwnerApproval);
-            updatePatchSetApproval(reviewDb, change.getId(),
+            updatePatchSetApproval(reviewDb, projectName, change.getId(),
                                    existingModuleOwnerApproval, ChangeType.DELETE);
             // Verify that at least one approval exists, otherwise inject CR +0
             approvalsForCurrentUser.remove(moduleOwnerLabel.getName());
@@ -282,7 +288,7 @@ class ChangeEventListener implements EventListener {
                         TimeUtil.nowTs());
                 log.info("INSERTING approval for non-module owner because last approval was removed: {}",
                          codeReviewApproval);
-                updatePatchSetApproval(reviewDb, change.getId(),
+                updatePatchSetApproval(reviewDb, projectName, change.getId(),
                                        codeReviewApproval, ChangeType.INSERT);
             }
         } // else, not module owner and no existing approval; nothing to do
@@ -315,7 +321,9 @@ class ChangeEventListener implements EventListener {
                 throws OrmException;
     }
 
-    private void updatePatchSetApproval(ReviewDb reviewDb, Change.Id changeId,
+    private void updatePatchSetApproval(ReviewDb reviewDb,
+                                        Project.NameKey project,
+                                        Change.Id changeId,
                                         PatchSetApproval approval, ChangeType type)
             throws OrmException, IOException {
         reviewDb.changes().beginTransaction(changeId);
@@ -328,7 +336,7 @@ class ChangeEventListener implements EventListener {
         } finally {
             reviewDb.rollback();
         }
-        CheckedFuture<?, IOException> indexWrite = indexer.indexAsync(changeId);
+        CheckedFuture<?, IOException> indexWrite = indexer.indexAsync(project, changeId);
         indexWrite.checkedGet();
     }
 
@@ -339,7 +347,7 @@ class ChangeEventListener implements EventListener {
             RequestContext old = tl.setContext(new RequestContext() {
 
                 @Override
-                public CurrentUser getCurrentUser() {
+                public CurrentUser getUser() {
                     return userFactory.create(change.getOwner());
                 }
 

@@ -7,7 +7,7 @@ import com.google.gerrit.reviewdb.server.ReviewDb;
 import com.google.gerrit.server.ApprovalsUtil;
 import com.google.gerrit.server.IdentifiedUser;
 import com.google.gerrit.server.git.CodeReviewCommit;
-import com.google.gerrit.server.git.CommitMergeStatus;
+import com.google.gerrit.server.git.strategy.CommitMergeStatus;
 import com.google.gerrit.server.git.validators.MergeValidationException;
 import com.google.gerrit.server.git.validators.MergeValidationListener;
 import com.google.gerrit.server.project.ProjectState;
@@ -26,8 +26,8 @@ import org.slf4j.LoggerFactory;
 public class MergeUserValidator implements MergeValidationListener {
 
     //TODO create a better status (or pick a better one)
-    private static final CommitMergeStatus DENY_STATUS =
-            CommitMergeStatus.INVALID_PROJECT_CONFIGURATION_PLUGIN_VALUE_NOT_PERMITTED;
+    private static final String DENY_STATUS =
+            "Submit blocked due to missing module owner.";
 
     private static final Logger log =
             LoggerFactory.getLogger(MergeUserValidator.class);
@@ -58,12 +58,12 @@ public class MergeUserValidator implements MergeValidationListener {
     @Override
     public void onPreMerge(Repository repo, CodeReviewCommit commit,
                            ProjectState destProject, Branch.NameKey destBranch,
-                           PatchSet.Id patchSetId)
+                           PatchSet.Id patchSetId, IdentifiedUser caller)
             throws MergeValidationException {
         PatchSetApproval psa =
                 approvalsUtil.getSubmitter(reviewDb.get(), commit.notes(), patchSetId);
         if (psa == null) {
-            throw new MergeValidationException(CommitMergeStatus.NO_PATCH_SET);
+            throw new MergeValidationException("no patchset found");
         }
 
         IdentifiedUser submitter =

@@ -3,6 +3,7 @@ package com.googlesource.gerrit.plugins.moduleowner;
 import com.google.common.collect.Lists;
 import com.google.gerrit.extensions.annotations.PluginName;
 import com.google.gerrit.extensions.client.GerritTopMenu;
+import com.google.gerrit.extensions.client.MenuItem;
 import com.google.gerrit.extensions.webui.TopMenu;
 import com.google.gerrit.server.CurrentUser;
 import com.google.inject.Inject;
@@ -29,7 +30,7 @@ public class OwnersTopMenu implements TopMenu {
         if (canSeeMenuEntry()) {
             menuEntries.add(new MenuEntry(GerritTopMenu.PROJECTS,
                   Collections.singletonList(new MenuItem("Module Owners",
-                                 baseUrl + "owners/${projectName}"))));
+                                                         baseUrl + "owners/${projectName}"))));
         }
     }
 
