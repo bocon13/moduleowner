@@ -1,6 +1,7 @@
 package com.googlesource.gerrit.plugins.moduleowner;
 
-import com.google.common.collect.Maps;
+import com.google.common.collect.ArrayListMultimap;
+import com.google.common.collect.Multimap;
 import com.google.common.util.concurrent.CheckedFuture;
 import com.google.gerrit.common.EventListener;
 import com.google.gerrit.common.TimeUtil;
@@ -44,11 +45,9 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.util.Collections;
 import java.util.List;
-import java.util.Map;
 
 import static com.googlesource.gerrit.plugins.moduleowner.ModuleOwnerConfig.CODE_REVIEW_LABEL;
 import static com.googlesource.gerrit.plugins.moduleowner.ModuleOwnerConfig.MODULE_OWNER_LABEL;
-import static com.googlesource.gerrit.plugins.moduleowner.ModuleOwnerUtils.getAccountFromAttribute;
 
 /**
  * Listener for change events, specifically patch set created events.
@@ -110,11 +109,11 @@ class ChangeEventListener implements EventListener {
             // Don't assign reviewers to drafts
             if (!psEvent.patchSet.get().isDraft) {
                 addReviewers(psEvent);
+                updateLabels(psEvent);
             }
-
-            // TODO update labels
         } else if (event instanceof DraftPublishedEvent) {
             addReviewers((PatchSetEvent) event);
+            updateLabels((PatchSetEvent) event);
         } else if (event instanceof CommentAddedEvent) {
             // New review available, add owner label if appropriate
             updateLabels((CommentAddedEvent) event);
@@ -122,7 +121,7 @@ class ChangeEventListener implements EventListener {
         // else, dropping event
     }
 
-    void addReviewers(final PatchSetEvent event) {
+    private void addReviewers(final PatchSetEvent event) {
         ModuleOwnerConfig config = moduleOwnerConfigCache.get(event.getProjectNameKey());
         if (config == null || !config.isEnabled() || config.getMaxReviewers() <= 0) {
             return;
@@ -157,22 +156,10 @@ class ChangeEventListener implements EventListener {
         }
     }
 
-    private void updateLabels(CommentAddedEvent event) {
+    private void updateLabels(final PatchSetEvent event) {
         Project.NameKey projectName = event.getProjectNameKey();
         ModuleOwnerConfig config = moduleOwnerConfigCache.get(projectName);
         if (config == null || !config.isEnabled()) {
-            return;
-        }
-
-        Account account = null;
-        try {
-            account = getAccountFromAttribute(schemaFactory.open(), event.author.get(), accountCache, accountResolver);
-        } catch (OrmException e) {
-            log.error("Could not load account", e);
-        }
-        if (account == null && event.author != null) {
-            log.warn("Could not find account for user: {} ({})",
-                     event.author.get().name, event.author.get().email);
             return;
         }
 
@@ -196,7 +183,7 @@ class ChangeEventListener implements EventListener {
             final RevCommit commit =
                     rw.parseCommit(ObjectId.fromString(event.patchSet.get().revision));
 
-            syncModuleOwnerLabel(projectName, account, change, psId, commit,
+            syncModuleOwnerLabel(projectName, change, psId, commit,
                                  config, reviewDb, repo);
         } catch (OrmException | IOException e) {
             log.error("Exception while updating labels for change: {} in project: {}",
@@ -204,7 +191,7 @@ class ChangeEventListener implements EventListener {
         }
     }
 
-    private void syncModuleOwnerLabel(Project.NameKey projectName, Account user,
+    private void syncModuleOwnerLabel(Project.NameKey projectName,
                                       Change change, PatchSet.Id psId, RevCommit commit,
                                       ModuleOwnerConfig config,
                                       ReviewDb reviewDb, Repository repo)
@@ -220,78 +207,92 @@ class ChangeEventListener implements EventListener {
 
         List<PatchSetApproval> existingApprovals =
                 reviewDb.patchSetApprovals().byChange(change.getId()).toList();
-        Map<String, PatchSetApproval> approvalsForCurrentUser = Maps.newHashMap();
+        Multimap<Account.Id, PatchSetApproval> approvals = ArrayListMultimap.create();
         for (PatchSetApproval approval : existingApprovals) {
             //FIXME is this right?
             if (approval.isLegacySubmit()) {
-                continue;
-            }
-            if (!approval.getAccountId().equals(user.getId())) {
                 continue;
             }
             if (!approval.getPatchSetId().equals(psId)) {
                 // old approval
                 continue;
             }
-            approvalsForCurrentUser.put(approval.getLabel(), approval);
+            approvals.put(approval.getAccountId(), approval);
         }
 
-        PatchSetApproval existingModuleOwnerApproval =
-                approvalsForCurrentUser.get(moduleOwnerLabel.getName());
-        PatchSetApproval existingCodeReviewApproval =
-                approvalsForCurrentUser.get(codeReviewLabel.getName());
-        if (config.isModuleOwner(user.getId(), repo, commit)) {
-            if (existingCodeReviewApproval != null && existingModuleOwnerApproval != null) {
-                if (existingCodeReviewApproval.getValue() != existingModuleOwnerApproval.getValue()) {
-                    // Update module owner approval
-                    existingModuleOwnerApproval.setValue(existingCodeReviewApproval.getValue());
+        for (Account.Id account : approvals.keySet()) {
+            PatchSetApproval existingModuleOwnerApproval = null;
+            PatchSetApproval existingCodeReviewApproval = null;
+            for (PatchSetApproval approval : approvals.get(account)) {
+                if (CODE_REVIEW_LABEL.equals(approval.getLabel())) {
+                    existingCodeReviewApproval = approval;
+                } else if (MODULE_OWNER_LABEL.equals(approval.getLabel())) {
+                    existingModuleOwnerApproval = approval;
+                }
+            }
+
+            // Note: this is an optimization that bypasses isModuleOwner check
+            if (existingCodeReviewApproval != null &&
+                    existingModuleOwnerApproval != null &&
+                    existingCodeReviewApproval.getValue() == existingModuleOwnerApproval.getValue()) {
+                // If the MO and CR approvals match, we can skip the remaining...
+                continue;
+            }
+
+            if (config.isModuleOwner(account, repo, commit)) {
+                if (existingCodeReviewApproval != null && existingModuleOwnerApproval != null) {
+                    if (existingCodeReviewApproval.getValue() != existingModuleOwnerApproval.getValue()) {
+                        // Update module owner approval
+                        existingModuleOwnerApproval.setValue(existingCodeReviewApproval.getValue());
+                        existingModuleOwnerApproval.setGranted(TimeUtil.nowTs());
+                        updatePatchSetApproval(reviewDb, projectName, change.getId(),
+                                               existingModuleOwnerApproval, ChangeType.UPDATE);
+
+                    } // else, nothing to be done; module owner approval is up to date
+                } else if (existingCodeReviewApproval != null) {
+                    // Create module owner approval
+                    PatchSetApproval moduleOwnerApproval = new PatchSetApproval(
+                            new PatchSetApproval.Key(
+                                    existingCodeReviewApproval.getPatchSetId(),
+                                    existingCodeReviewApproval.getAccountId(),
+                                    moduleOwnerLabel.getLabelId()),
+                            existingCodeReviewApproval.getValue(),
+                            TimeUtil.nowTs());
+                    updatePatchSetApproval(reviewDb, projectName, change.getId(),
+                                           moduleOwnerApproval, ChangeType.INSERT);
+
+                } else if (existingModuleOwnerApproval != null) {
+                    // Update module owner approval (no matching code review approval) to 0
+                    // Note: Gerrit is probably using the module owner label to keep the user on the patchset,
+                    //       thus it cannot be deleted.
+                    existingModuleOwnerApproval.setValue((short) 0);
                     existingModuleOwnerApproval.setGranted(TimeUtil.nowTs());
                     updatePatchSetApproval(reviewDb, projectName, change.getId(),
                                            existingModuleOwnerApproval, ChangeType.UPDATE);
-
-                } // else, nothing to be done; module owner approval is up to date
-            } else if (existingCodeReviewApproval != null) {
-                // Create module owner approval
-                PatchSetApproval moduleOwnerApproval = new PatchSetApproval(
-                        new PatchSetApproval.Key(
-                                existingCodeReviewApproval.getPatchSetId(),
-                                existingCodeReviewApproval.getAccountId(),
-                                moduleOwnerLabel.getLabelId()),
-                        existingCodeReviewApproval.getValue(),
-                        TimeUtil.nowTs());
-                updatePatchSetApproval(reviewDb, projectName, change.getId(),
-                                       moduleOwnerApproval, ChangeType.INSERT);
-
+                } // else, nothing to be done
             } else if (existingModuleOwnerApproval != null) {
-                // Delete module owner approval (no matching code review approval)
-                // FIXME commenting out for issue #15, needs a better solution long term
-//                updatePatchSetApproval(reviewDb, change.getId(),
-//                                       existingModuleOwnerApproval, ChangeType.DELETE);
-                log.info("Not removing approval for module owner for change {}: {}",
-                         change.getId(), existingModuleOwnerApproval);
-
-            } // else, nothing to be done
-        } else if (existingModuleOwnerApproval != null) {
-            // Delete module owner approval (not a module owner)
-            log.info("REMOVING approval for non-module owner: {}", existingModuleOwnerApproval);
-            updatePatchSetApproval(reviewDb, projectName, change.getId(),
-                                   existingModuleOwnerApproval, ChangeType.DELETE);
-            // Verify that at least one approval exists, otherwise inject CR +0
-            approvalsForCurrentUser.remove(moduleOwnerLabel.getName());
-            if (approvalsForCurrentUser.size() == 0) {
-                PatchSetApproval codeReviewApproval = new PatchSetApproval(
-                        new PatchSetApproval.Key(
-                                existingModuleOwnerApproval.getPatchSetId(),
-                                existingModuleOwnerApproval.getAccountId(),
-                                codeReviewLabel.getLabelId()),
-                        (short) 0,
-                        TimeUtil.nowTs());
-                log.info("INSERTING approval for non-module owner because last approval was removed: {}",
-                         codeReviewApproval);
+                // Delete module owner approval (not a module owner)
+                log.info("REMOVING approval for non-module owner: {}", existingModuleOwnerApproval);
                 updatePatchSetApproval(reviewDb, projectName, change.getId(),
-                                       codeReviewApproval, ChangeType.INSERT);
-            }
-        } // else, not module owner and no existing approval; nothing to do
+                                       existingModuleOwnerApproval, ChangeType.DELETE);
+                // If the module owner label was the only approval, inject CR +1
+                // We need to ensure that at least one approval exists to keep user
+                // on the review.
+                if (approvals.get(account).size() == 1) {
+                    PatchSetApproval codeReviewApproval = new PatchSetApproval(
+                            new PatchSetApproval.Key(
+                                    existingModuleOwnerApproval.getPatchSetId(),
+                                    existingModuleOwnerApproval.getAccountId(),
+                                    codeReviewLabel.getLabelId()),
+                            (short) 0,
+                            TimeUtil.nowTs());
+                    log.info("INSERTING approval for non-module owner because last approval was removed: {}",
+                             codeReviewApproval);
+                    updatePatchSetApproval(reviewDb, projectName, change.getId(),
+                                           codeReviewApproval, ChangeType.INSERT);
+                }
+            } // else, not module owner and no existing approval; nothing to do
+        }
     }
 
     private enum ChangeType {
