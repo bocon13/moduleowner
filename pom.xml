@@ -6,11 +6,11 @@
   <groupId>com.googlesource.gerrit.plugins.moduleowner</groupId>
   <artifactId>moduleowner</artifactId>
   <packaging>jar</packaging>
-  <version>2.13.3</version>
+  <version>v2.14.3</version>
 
   <properties>
     <Gerrit-ApiType>plugin</Gerrit-ApiType>
-    <Gerrit-ApiVersion>2.13.3</Gerrit-ApiVersion>
+    <Gerrit-ApiVersion>2.14.3</Gerrit-ApiVersion>
   </properties>
 
   <build>

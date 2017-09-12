@@ -132,7 +132,7 @@ class ChangeEventListener implements EventListener {
              ReviewDb reviewDb = schemaFactory.open()) {
 
 
-            Change.Id changeId = new Change.Id(Integer.parseInt(event.change.get().number));
+            Change.Id changeId = new Change.Id(event.change.get().number);
             final Change change = reviewDb.changes().get(changeId);
             if (change == null) {
                 log.warn("Change {} not found.", changeId.get());
@@ -165,14 +165,14 @@ class ChangeEventListener implements EventListener {
 
         try (Repository repo = repoManager.openRepository(projectName);
              ReviewDb reviewDb = schemaFactory.open()) {
-            Change.Id changeId = new Change.Id(Integer.parseInt(event.change.get().number));
+            Change.Id changeId = new Change.Id(event.change.get().number);
             final Change change = reviewDb.changes().get(changeId);
             if (change == null) {
                 log.warn("Change {} not found.", changeId.get());
                 return;
             }
 
-            PatchSet.Id psId = new PatchSet.Id(changeId, Integer.parseInt(event.patchSet.get().number));
+            PatchSet.Id psId = new PatchSet.Id(changeId, event.patchSet.get().number);
             PatchSet patchSet = reviewDb.patchSets().get(psId);
             if (patchSet == null) {
                 log.warn("Patch set " + psId.get() + " not found.");
