@@ -265,6 +265,9 @@ public class ModuleOwnerConfig {
             Account account = accountCache.get(entry.getKey()).getAccount();
             if (!account.isActive()) {
                 it.remove();
+            } else if (account.getStatus().equals("inactive")) { //FIXME
+                log.info("skipping inactive user: {}", account.getFullName());
+                it.remove();
             }
         }
     }
