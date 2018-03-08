@@ -268,6 +268,9 @@ public class ModuleOwnerConfig {
             } else if (account.getStatus().equals("inactive")) { //FIXME
                 log.info("skipping inactive user: {}", account.getFullName());
                 it.remove();
+            } else if (entry.getValue().sumPatternLength == 0) {
+                log.info("skipping only super module owner matches for user: {}", account.getFullName());
+                it.remove();
             }
         }
     }
@@ -477,7 +480,10 @@ public class ModuleOwnerConfig {
 
         void addFile(String pattern) {
             fileCount++;
-            sumPatternLength += pattern.length();
+            if (!".*".equals(pattern)) {
+                // Don't count super module owner (".*") pattern length
+                sumPatternLength += pattern.length();
+            }
         }
 
         @Override
