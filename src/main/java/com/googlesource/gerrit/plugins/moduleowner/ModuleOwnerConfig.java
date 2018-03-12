@@ -88,7 +88,7 @@ public class ModuleOwnerConfig {
                       SchemaFactory<ReviewDb> schemaFactory,
                       @Assisted Project.NameKey projectName) {
         this.projectName = projectName;
-        log.info("Initializing module owner config for {}", projectName);
+        log.debug("Initializing module owner config for {}", projectName);
 
         this.configFactory = configFactory;
         this.accountResolver = accountResolver;
@@ -126,7 +126,7 @@ public class ModuleOwnerConfig {
             List<String> pathPatterns = Lists.newArrayList(
                     config.getStringList(CONFIG_USER, username, CONFIG_PATH));
             addPatterns(Key.user(account.getId()), pathPatterns);
-            log.info("Processing user: {} ({}) with patterns: {}",
+            log.debug("Processing user: {} ({}) with patterns: {}",
                       username, account.getId(), pathPatterns);
         }
 
@@ -139,7 +139,7 @@ public class ModuleOwnerConfig {
             List<String> pathPatterns = Lists.newArrayList(
                     config.getStringList(CONFIG_GROUP, groupname, CONFIG_PATH));
             addPatterns(Key.group(group.getGroupUUID()), pathPatterns);
-            log.info("Processing group: {} ({}) with patterns: {}",
+            log.debug("Processing group: {} ({}) with patterns: {}",
                       groupname, group.getGroupUUID(), pathPatterns);
         }
     }
@@ -147,7 +147,7 @@ public class ModuleOwnerConfig {
     private boolean checkEnabled() {
         ProjectState projectState = projectCache.get(projectName);
         LabelTypes labelTypes = projectState.getLabelTypes();
-        log.info("Labels: {}", labelTypes);
+        log.trace("Labels: {}", labelTypes);
         return labelTypes.byLabel(MODULE_OWNER_LABEL) != null;
     }
 
@@ -190,15 +190,16 @@ public class ModuleOwnerConfig {
         List<String> files = getFilesInCommit(repo, commit);
         List<String> patterns = getEffectivePathPatternsForUser(user);
         boolean result = isPatchApproved(files, patterns);
-        // TODO remove logs eventually
-        if (result) {
-            log.info("user {} is module owner for commit {}/{} with patterns {}",
-                     accountCache.get(user).getUserName(), projectName.get(),
-                     commit.getId().getName(), patterns);
-        } else {
-            log.info("user {} is not module owner for commit {}/{} with patterns {}",
-                     accountCache.get(user).getUserName(), projectName.get(),
-                     commit.getId().getName(), patterns);
+        if (log.isTraceEnabled()) { // TODO remove logs eventually
+            if (result) {
+                log.trace("user {} is module owner for commit {}/{} with patterns {}",
+                        accountCache.get(user).getUserName(), projectName.get(),
+                        commit.getId().getName(), patterns);
+            } else {
+                log.trace("user {} is not module owner for commit {}/{} with patterns {}",
+                        accountCache.get(user).getUserName(), projectName.get(),
+                        commit.getId().getName(), patterns);
+            }
         }
         return result;
     }
@@ -265,11 +266,11 @@ public class ModuleOwnerConfig {
             Account account = accountCache.get(entry.getKey()).getAccount();
             if (!account.isActive()) {
                 it.remove();
-            } else if (account.getStatus().equals("inactive")) { //FIXME
-                log.info("skipping inactive user: {}", account.getFullName());
+            } else if (account.getStatus().equals("dormant")) { //FIXME use variable
+                log.debug("skipping inactive user: {}", account.getFullName());
                 it.remove();
             } else if (entry.getValue().sumPatternLength == 0) {
-                log.info("skipping only super module owner matches for user: {}", account.getFullName());
+                log.debug("skipping .* matches for user: {}", account.getFullName());
                 it.remove();
             }
         }
@@ -395,7 +396,7 @@ public class ModuleOwnerConfig {
      * @return true if every file matches, false otherwise
      */
     private static boolean isPatchApproved(List<String> files, List<String> patterns) {
-        log.debug("files: {}, patterns: {}", files, patterns);
+        log.trace("files: {}, patterns: {}", files, patterns);
         for (String file : files) {
             boolean match = false;
             for (String pattern : patterns) {
@@ -405,11 +406,11 @@ public class ModuleOwnerConfig {
                 }
             }
             if (!match) {
-                log.debug("file {} does not match any regex: {}", file, patterns);
+                log.trace("file {} does not match any regex: {}", file, patterns);
                 return false;
             }
         }
-        log.debug("patch approved");
+        log.trace("patch approved");
         return true;
     }
 

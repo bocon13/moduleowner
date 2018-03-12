@@ -56,7 +56,7 @@ public class ModuleOwnerConfigCacheImpl implements ModuleOwnerConfigCache {
         try {
             return configCache.get(projectName);
         } catch (ExecutionException e) {
-            log.warn("Could not get config for project: {}", projectName.get());
+            log.error("Could not get config for project: {}", projectName.get());
             return null;
         }
     }
@@ -81,8 +81,7 @@ public class ModuleOwnerConfigCacheImpl implements ModuleOwnerConfigCache {
                 Project.NameKey project = new Project.NameKey(event.getProjectName());
                 // TODO check to see if there are changes before evicting config
                 cache.evict(project);
-                log.info("Updating module owner config for project: {}", project);
-
+                log.debug("Updating module owner config for project: {}", project);
             }
         }
     }

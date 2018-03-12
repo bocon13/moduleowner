@@ -119,8 +119,7 @@ public class ReviewersByOwnership implements Runnable {
                         moduleOwners.remove(reviewer);
                     }
                     if (numReviewers <= 0) {
-                        // TODO lower log level or clean up
-                        log.info("Already enough module owners assigned to change: {} in project: {}",
+                        log.debug("Already enough module owners assigned to change: {} in project: {}",
                                  change.getId(), change.getProject().get());
                         return;
                     }
@@ -141,7 +140,7 @@ public class ReviewersByOwnership implements Runnable {
                 input.reviewer = accountId.toString();
                 post.apply(changeResource, input);
             }
-            log.info("Adding reviewers to change {}: {}", change, moduleOwners);
+            log.debug("Adding reviewers to change {}: {}", change, moduleOwners);
         } catch (Exception ex) {
             log.error("Couldn't add reviewers to the change", ex);
         }

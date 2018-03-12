@@ -53,7 +53,7 @@ public class MergeUserValidator implements MergeValidationListener {
             throw new MergeValidationException(DENY_STATUS);
         }
 
-        log.info("user {} submitted commit {}/{}",
+        log.debug("user {} submitted commit {}/{}",
                  caller.getUserName(),
                  destProject.getProject().getNameKey(),
                  commit.getId().getName());

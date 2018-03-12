@@ -148,11 +148,11 @@ class ChangeEventListener implements EventListener {
                                change);
 
         } catch (RepositoryNotFoundException e) {
-            log.warn("Repo not found: {}", projectName.get(), e);
+            log.error("Repo not found: {}", projectName.get(), e);
         } catch (IOException e) {
-            log.warn("IO Exception trying to get repo: {}", projectName.get(), e);
+            log.error("IO Exception trying to get repo: {}", projectName.get(), e);
         } catch (OrmException e) {
-            log.warn("OrmException while adding reviewers for: {}", projectName.get(), e);
+            log.error("OrmException while adding reviewers for: {}", projectName.get(), e);
         }
     }
 
@@ -272,7 +272,7 @@ class ChangeEventListener implements EventListener {
                 } // else, nothing to be done
             } else if (existingModuleOwnerApproval != null) {
                 // Delete module owner approval (not a module owner)
-                log.info("REMOVING approval for non-module owner: {}", existingModuleOwnerApproval);
+                log.debug("REMOVING approval for non-module owner: {}", existingModuleOwnerApproval);
                 updatePatchSetApproval(reviewDb, projectName, change.getId(),
                                        existingModuleOwnerApproval, ChangeType.DELETE);
                 // If the module owner label was the only approval, inject CR +1
@@ -286,7 +286,7 @@ class ChangeEventListener implements EventListener {
                                     codeReviewLabel.getLabelId()),
                             (short) 0,
                             TimeUtil.nowTs());
-                    log.info("INSERTING approval for non-module owner because last approval was removed: {}",
+                    log.debug("INSERTING approval for non-module owner because last approval was removed: {}",
                              codeReviewApproval);
                     updatePatchSetApproval(reviewDb, projectName, change.getId(),
                                            codeReviewApproval, ChangeType.INSERT);
@@ -331,7 +331,7 @@ class ChangeEventListener implements EventListener {
         try {
             type.apply(reviewDb, approval);
             reviewDb.commit();
-            log.info("Change in module owner approval: {} {}", type, approval);
+            log.debug("Change in module owner approval: {} {}", type, approval);
         } catch (Exception e) {
             log.error("Exception adding reviewer to change {}", changeId, e);
         } finally {

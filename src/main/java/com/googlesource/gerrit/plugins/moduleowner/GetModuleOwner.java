@@ -83,11 +83,11 @@ public class GetModuleOwner implements RestReadView<RevisionResource> {
                 return Response.ok(Status.DENIED);
             }
         } catch (RepositoryNotFoundException e) {
-            log.warn("Repo not found: {}", change.getProject(), e);
+            log.error("Repo not found: {}", change.getProject(), e);
         } catch (IOException e) {
-            log.warn("IO Exception trying to get repo", e);
+            log.error("IO Exception trying to get repo", e);
         } catch (PatchListNotAvailableException e) {
-            log.warn("Could not open revision", e);
+            log.error("Could not open revision", e);
         }
         return Response.ok(Status.NONE);
     }

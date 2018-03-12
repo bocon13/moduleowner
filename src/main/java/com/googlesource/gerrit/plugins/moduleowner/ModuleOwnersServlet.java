@@ -38,7 +38,7 @@ class ModuleOwnersServlet extends HttpServlet {
         this.userProvider = userProvider;
         this.configCache = configCache;
 
-        log.info(String.format("'%s' at url %s", pluginName, url));
+        log.debug(String.format("'%s' at url %s", pluginName, url));
     }
 
     @Override

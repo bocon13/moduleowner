@@ -12,24 +12,33 @@ public class UsageDataListener implements UsageDataPublishedListener {
 
     @Override
     public void onUsageDataPublished(Event event) {
-        StringBuilder sb = new StringBuilder();
+        if (log.isDebugEnabled()) {
+            StringBuilder sb = new StringBuilder();
 
-        sb.append("Usage Data:\n");
+            sb.append("Usage Data:\n");
 
-        MetaData m = event.getMetaData();
-        sb.append("\nName: "); sb.append(m.getName());
-        sb.append("\nDescription: "); sb.append(m.getDescription());
-        sb.append("\nUnit name: "); sb.append(m.getUnitName());
-        sb.append("\nUnit symbol: "); sb.append(m.getUnitSymbol());
-        sb.append("\nTimestamp: "); sb.append(event.getInstant());
-        sb.append("\n");
-
-        for (Data d : event.getData()) {
-            sb.append("\nProject name: "); sb.append(d.getProjectName());
-            sb.append("\nValue: "); sb.append(d.getValue());
+            MetaData m = event.getMetaData();
+            sb.append("\nName: ");
+            sb.append(m.getName());
+            sb.append("\nDescription: ");
+            sb.append(m.getDescription());
+            sb.append("\nUnit name: ");
+            sb.append(m.getUnitName());
+            sb.append("\nUnit symbol: ");
+            sb.append(m.getUnitSymbol());
+            sb.append("\nTimestamp: ");
+            sb.append(event.getInstant());
             sb.append("\n");
-        }
 
-        log.info(sb.toString());
+            for (Data d : event.getData()) {
+                sb.append("\nProject name: ");
+                sb.append(d.getProjectName());
+                sb.append("\nValue: ");
+                sb.append(d.getValue());
+                sb.append("\n");
+            }
+
+            log.debug(sb.toString());
+        }
     }
 }
